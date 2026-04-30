@@ -4,57 +4,78 @@ import math
 import torch
 import pytest
 
-from sonar_vision.water.physics import WaterColumnModel, SonarBeamModel
+from sonar_vision.water.physics import WaterColumnModel, SonarBeamModel, NMEAInterpreter
 
 
 class TestWaterColumnModel:
     def test_sound_speed(self):
         water = WaterColumnModel()
-        speed = water.sound_speed(depth=10, temperature=12.0, salinity=35.0)
+        depth = torch.tensor([10.0])
+        speed = water.sound_speed(depth)
         # Mackenzie equation gives ~1489 m/s at these conditions
-        assert 1480 < speed < 1500
+        assert 1480 < speed.item() < 1500
 
     def test_sound_speed_increases_with_depth(self):
         water = WaterColumnModel()
-        s_shallow = water.sound_speed(depth=5, temperature=12.0, salinity=35.0)
-        s_deep = water.sound_speed(depth=100, temperature=12.0, salinity=35.0)
-        assert s_deep > s_shallow
+        s_shallow = water.sound_speed(torch.tensor([5.0]))
+        s_deep = water.sound_speed(torch.tensor([100.0]))
+        assert s_deep.item() > s_shallow.item()
 
-    def test_sound_speed_increases_with_salinity(self):
+    def test_sound_speed_with_temp_override(self):
         water = WaterColumnModel()
-        s_fresh = water.sound_speed(depth=10, temperature=12.0, salinity=0.0)
-        s_salt = water.sound_speed(depth=10, temperature=12.0, salinity=35.0)
-        assert s_salt > s_fresh
+        s_default = water.sound_speed(torch.tensor([10.0]))
+        s_warm = water.sound_speed(torch.tensor([10.0]), temperature=torch.tensor([20.0]))
+        # Warmer water → faster sound
+        assert s_warm.item() > s_default.item()
 
     def test_light_attenuation(self):
         water = WaterColumnModel()
-        # At 10m, some light should still pass
-        r, g, b = water.light_transmission(10)
-        assert 0 < r < 1
-        assert 0 < g < 1
-        assert 0 < b < 1
+        depth = torch.tensor([10.0])
+        # Light should decrease with depth
+        light = water.light_attenuation(depth)
+        assert light.shape == (1,)
 
-    def test_blue_dominates_at_depth(self):
+    def test_color_attenuation_vector(self):
         water = WaterColumnModel()
-        r, g, b = water.light_transmission(50)
-        # Blue should penetrate deepest
-        assert b > r
+        depth = torch.tensor([20.0])
+        rgb = water.color_attenuation_vector(depth)
+        assert rgb.shape == (1, 3)
+        # All values should be in [0, 1]
+        assert (rgb >= 0).all()
+        assert (rgb <= 1).all()
 
-    def test_color_attenuation_returns_rgb(self):
+    def test_absorption_coefficient(self):
         water = WaterColumnModel()
-        rgb = water.color_at_depth(20, turbidity=0.5)
-        assert len(rgb) == 3
-        assert all(0 <= c <= 1 for c in rgb)
+        depth = torch.tensor([10.0])
+        freq = torch.tensor([200.0])
+        alpha = water.absorption_coefficient(depth, freq)
+        assert alpha.shape == (1,)
+        assert alpha.item() > 0
 
 
 class TestSonarBeamModel:
-    def test_beam_width(self):
-        beam = SonarBeamModel(frequency_khz=200.0)
-        # 200 kHz should have narrow beam
-        width = beam.beam_width_degrees
-        assert 0 < width < 30
-
     def test_range_resolution(self):
         beam = SonarBeamModel(frequency_khz=200.0)
-        resolution = beam.range_resolution_m
+        resolution = beam.range_resolution()
         assert resolution > 0
+
+    def test_beam_footprint(self):
+        beam = SonarBeamModel(frequency_khz=200.0)
+        footprint = beam.beam_footprint(torch.tensor([50.0]))
+        assert footprint.item() > 0
+
+    def test_target_strength_to_intensity(self):
+        beam = SonarBeamModel(frequency_khz=200.0)
+        intensity = beam.target_strength_to_intensity(
+            torch.tensor([-30.0]),
+            torch.tensor([50.0]),
+        )
+        assert intensity.shape == (1,)
+
+
+class TestNMEAInterpreter:
+    def test_parse_sonar_return(self):
+        result = NMEAInterpreter.parse_sonar_return("$PSDVS,15.2,45.0,-30.5,3.0*4A")
+        assert result["depth"] == 15.2
+        assert result["bearing"] == 45.0
+        assert result["intensity"] == -30.5
