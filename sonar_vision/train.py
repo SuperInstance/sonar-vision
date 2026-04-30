@@ -13,19 +13,25 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import autocast, GradScaler
-from PIL import Image
 
 from sonar_vision.pipeline import SonarVision
 from sonar_vision.data.sonar_dataset import SonarVideoDataset, create_training_split
+
+# Optional TensorBoard — fail gracefully if missing
+_tensorboard_available = False
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    _tensorboard_available = True
+except ImportError:
+    SummaryWriter = None  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -135,11 +141,8 @@ def compute_depth_mae(
     max_depth: int,
 ) -> float:
     """Mean predicted depth vs mean sonar detection depth (meters)."""
-    # pred_depth_map: (B, 1, H, W) in [0, 1]
-    # sonar_detections: (B, D) in meters
     pred_depth_m = pred_depth_map.mean(dim=[1, 2, 3]) * max_depth  # (B,)
 
-    # valid detections only (ignore padded zeros if no detections)
     mask = sonar_detections > 0
     if mask.any():
         gt_depth_m = sonar_detections.sum(dim=1) / mask.sum(dim=1).clamp(min=1)
@@ -278,9 +281,7 @@ def train_one_step(
     ema: EMA,
     device: torch.device,
     grad_accum_steps: int,
-    step: int,
-    writer: Optional[SummaryWriter],
-    max_depth: int,
+    is_boundary: bool,
 ) -> Dict[str, float]:
     model.train()
 
@@ -302,13 +303,13 @@ def train_one_step(
 
     scaler.scale(loss).backward()
 
-    metrics = {}
+    metrics: Dict[str, float] = {}
     if out.get("loss_dict"):
         for k, v in out["loss_dict"].items():
             metrics[k] = v / grad_accum_steps
 
     # Optimizer step on accumulation boundary
-    if (step + 1) % grad_accum_steps == 0:
+    if is_boundary:
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         scaler.step(optimizer)
@@ -320,6 +321,21 @@ def train_one_step(
     return metrics
 
 
+def optimizer_step_boundary(
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: GradScaler,
+    ema: EMA,
+):
+    """Force an optimizer step (used at epoch end for leftover gradients)."""
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    scaler.step(optimizer)
+    scaler.update()
+    optimizer.zero_grad(set_to_none=True)
+    ema.update(model)
+
+
 # ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
@@ -329,7 +345,7 @@ def evaluate(
     model: SonarVision,
     dataloader: DataLoader,
     device: torch.device,
-    writer: Optional[SummaryWriter],
+    writer: Optional[object],
     step: int,
     max_depth: int,
     log_images: bool = True,
@@ -399,6 +415,9 @@ def train(args):
     device = get_device()
     print(f"[train] Using device: {device}")
 
+    if not _tensorboard_available:
+        print("[train] Warning: tensorboard not installed. Logging disabled.")
+
     # Dataloaders
     train_loader, val_loader = build_dataloaders(args)
     print(f"[train] Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
@@ -414,7 +433,9 @@ def train(args):
     # Optimizer & scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.05)
     total_steps = len(train_loader) * args.epochs // args.gradient_accumulation_steps
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=args.lr * 1e-2)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=max(total_steps, 1), eta_min=args.lr * 1e-2
+    )
 
     scaler = GradScaler(enabled=(device.type == "cuda"))
     ema = EMA(model, decay=0.999)
@@ -438,7 +459,7 @@ def train(args):
     # TensorBoard
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    writer = SummaryWriter(log_dir=output_dir / "logs")
+    writer = SummaryWriter(log_dir=output_dir / "logs") if _tensorboard_available else None
 
     global_step = start_step
     for epoch in range(start_epoch, args.epochs):
@@ -446,6 +467,7 @@ def train(args):
         epoch_metrics: Dict[str, float] = {}
 
         for batch_idx, batch in enumerate(train_loader):
+            is_boundary = (batch_idx + 1) % args.gradient_accumulation_steps == 0
             metrics = train_one_step(
                 model=model,
                 batch=batch,
@@ -455,16 +477,14 @@ def train(args):
                 ema=ema,
                 device=device,
                 grad_accum_steps=args.gradient_accumulation_steps,
-                step=global_step,
-                writer=writer,
-                max_depth=args.max_depth,
+                is_boundary=is_boundary,
             )
 
             for k, v in metrics.items():
                 epoch_metrics[k] = epoch_metrics.get(k, 0.0) + v
 
-            # Log to TensorBoard on optimizer step boundary
-            if (global_step + 1) % args.gradient_accumulation_steps == 0:
+            # On optimizer step boundary
+            if is_boundary:
                 global_step += 1
 
                 # Log training metrics
@@ -490,7 +510,6 @@ def train(args):
                         pred_01 = (out["frame"] + 1.0) / 2.0
                         writer.add_images("train/pred", pred_01, global_step)
                         writer.add_images("train/depth", out["depth_map"], global_step)
-                        # log first camera as reference
                         writer.add_images("train/gt", cam_frames[:, 0].clamp(0, 1), global_step)
                         model.train()
 
@@ -530,6 +549,11 @@ def train(args):
                         for k, v in val_metrics.items():
                             writer.add_scalar(f"val/{k}", v, global_step)
 
+        # End-of-epoch: step any leftover gradients
+        if (len(train_loader) % args.gradient_accumulation_steps) != 0:
+            optimizer_step_boundary(model, optimizer, scaler, ema)
+            global_step += 1
+
         # End-of-epoch summary
         print(
             f"[train] Epoch {epoch + 1}/{args.epochs} | "
@@ -550,7 +574,8 @@ def train(args):
         final_path,
     )
     print(f"[train] Final checkpoint: {final_path}")
-    writer.close()
+    if writer is not None:
+        writer.close()
 
 
 # ---------------------------------------------------------------------------

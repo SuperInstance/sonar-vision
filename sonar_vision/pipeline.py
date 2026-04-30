@@ -194,7 +194,7 @@ class SonarVision(nn.Module):
         self.eval()
         with torch.no_grad():
             tokens, _ = self.encoder(sonar_intensity)
-            aggregated, cache = self.aggregator(tokens, cache=cache)
+            aggregated, cache = self.aggregator(tokens, past_cache=cache)
             adapted = self.feature_adapter(aggregated)
             result = self.decoder(adapted)
             return result["frame"], result["depth_map"], cache

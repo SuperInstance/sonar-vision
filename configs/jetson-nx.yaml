@@ -1,0 +1,61 @@
+name: sonarvision-jetson-nx
+output_dir: ./output/jetson-nx
+seed: 42
+
+encoder:
+  max_depth: 200
+  bearing_bins: 128
+  patch_size: 16
+  embed_dim: 768
+  pretrained: ""
+  use_dino: false
+
+gct:
+  num_layers: 4
+  num_heads: 12
+  gqa_ratio: 4
+  window_size: 24
+  mlp_ratio: 4.0
+  dropout: 0.0
+  max_cache_seq: 256
+
+decoder:
+  output_resolution: [288, 384]
+  num_upsample_stages: 3
+  temporal_refine_layers: 2
+
+supervision:
+  depth_sigma: 3.0
+  temporal_weight: 0.1
+  turbidity_weight: 0.05
+
+data:
+  root_dir: ./data
+  train_split: 0.8
+  num_workers: 2
+  sonar_channels: 4
+
+train:
+  epochs: 100
+  batch_size: 2
+  lr: 0.0001
+  weight_decay: 0.01
+  gradient_accumulation: 4
+  checkpoint_every: 1000
+  log_every: 50
+  sample_every: 500
+  warmup_steps: 500
+  resume: ""
+
+deploy:
+  target: jetson-orin-nx
+  precision: fp16
+  max_latency_ms: 100.0
+  max_memory_mb: 8192.0
+  use_tensorrt: true
+  trt_workspace_mb: 2048
+
+water:
+  sonar_frequency_khz: 200.0
+  default_salinity: 35.0
+  default_temperature: 12.0
