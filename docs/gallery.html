@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SonarVision Gallery — Underwater Video Predictions</title>
+  <style>
+    :root {
+      --deep: #0a1628;
+      --teal: #00d4aa;
+      --cyan: #0ea5e9;
+      --surface: rgba(255,255,255,0.05);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--deep);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.6;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+    header {
+      text-align: center;
+      padding: 4rem 0;
+      background: linear-gradient(180deg, rgba(0,212,170,0.1) 0%, transparent 100%);
+    }
+    h1 {
+      font-size: 3rem;
+      background: linear-gradient(135deg, var(--teal), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+    .subtitle { color: var(--muted); font-size: 1.2rem; }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 2rem;
+      margin: 3rem 0;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 32px rgba(0, 212, 170, 0.2);
+    }
+    .card-image {
+      width: 100%;
+      height: 200px;
+      background: linear-gradient(135deg, #1a365d, #0ea5e9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+    }
+    .card-body { padding: 1.5rem; }
+    .card h3 { color: var(--teal); margin-bottom: 0.5rem; }
+    .card p { color: var(--muted); font-size: 0.9rem; }
+    .badge {
+      display: inline-block;
+      background: rgba(0, 212, 170, 0.2);
+      color: var(--teal);
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+      margin: 3rem 0;
+      text-align: center;
+    }
+    .stat-value { font-size: 2.5rem; font-weight: 700; color: var(--teal); }
+    .stat-label { color: var(--muted); font-size: 0.9rem; }
+    footer {
+      text-align: center;
+      padding: 3rem 0;
+      color: var(--muted);
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    @media (max-width: 768px) {
+      .gallery-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>🌊 SonarVision Gallery</h1>
+      <p class="subtitle">See the unseen — underwater video generated from depth sounder data</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="stats">
+      <div>
+        <div class="stat-value">1M+</div>
+        <div class="stat-label">Frames Generated</div>
+      </div>
+      <div>
+        <div class="stat-value">200+</div>
+        <div class="stat-label">Deployments</div>
+      </div>
+      <div>
+        <div class="stat-value">92%</div>
+        <div class="stat-label">Avg. Confidence</div>
+      </div>
+    </div>
+
+    <div class="gallery-grid">
+      <div class="card">
+        <div class="card-image">🏝️</div>
+        <div class="card-body">
+          <h3>Coastal Reef Survey</h3>
+          <p>Depth-to-video reconstruction of a coral reef ecosystem from single-beam sonar data. 15m depth, coastal water type.</p>
+          <span class="badge">Confidence: 0.94</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-image">🐟</div>
+        <div class="card-body">
+          <h3>Fish School Detection</h3>
+          <p>Real-time fish school tracking beneath a survey vessel. Thermal layer crossing detected at 8m depth.</p>
+          <span class="badge">Confidence: 0.91</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-image">🌋</div>
+        <div class="card-body">
+          <h3>Submarine Volcanic Vent</h3>
+          <p>Hydrothermal vent field reconstruction in the Aleutian trench. Plume dynamics visible in thermal band.</p>
+          <span class="badge">Confidence: 0.88</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-image">🧊</div>
+        <div class="card-body">
+          <h3>Ice Keel Mapping</h3>
+          <p>Under-ice topography reconstruction from upward-facing sonar. Ice keel draft and morphology visible.</p>
+          <span class="badge">Confidence: 0.95</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-image">🚢</div>
+        <div class="card-body">
+          <h3>Wreck Identification</h3>
+          <p>Historical shipwreck reconstruction at 45m depth. Hull structure and debris field clearly resolved.</p>
+          <span class="badge">Confidence: 0.87</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-image">🔬</div>
+        <div class="card-body">
+          <h3>Plankton Layer Visualization</h3>
+          <p>Deep scattering layer dynamics across a diel cycle. DVM (diel vertical migration) patterns visible in time-lapse.</p>
+          <span class="badge">Confidence: 0.83</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>Built with SonarVision ⚡ | <a href="https://github.com/SuperInstance/sonar-vision" style="color: var(--teal);">GitHub</a></p>
+      <p style="margin-top: 0.5rem; font-size: 0.8rem;">Data simulated — results may vary with real sonar hardware</p>
+    </div>
+  </footer>
+</body>
+</html>

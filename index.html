@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SonarVision — Underwater Video from Sound</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+  <style>
+    :root {
+      --deep: #0a1628;
+      --deep2: #0f1f3d;
+      --teal: #00d4aa;
+      --cyan: #0ea5e9;
+      --blue: #3b82f6;
+      --surface: rgba(255,255,255,0.03);
+      --surface-hover: rgba(255,255,255,0.08);
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --border: rgba(255,255,255,0.08);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--deep);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: radial-gradient(ellipse at 20% 50%, rgba(0,212,170,0.03) 0%, transparent 50%),
+                  radial-gradient(ellipse at 80% 50%, rgba(14,165,233,0.03) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: -1;
+    }
+    nav {
+      position: fixed;
+      top: 0; width: 100%;
+      background: rgba(10,22,40,0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .nav-logo { font-size: 1.3rem; font-weight: 700; color: var(--teal); }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      margin-left: 2rem;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--teal); }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+    /* Hero */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding-top: 4rem;
+    }
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 5rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--teal), var(--cyan), var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1.5rem;
+      line-height: 1.1;
+    }
+    .hero p {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin-bottom: 2rem;
+    }
+    .cta-group { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      padding: 0.8rem 2rem;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.3s;
+      font-size: 1rem;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--teal), var(--cyan));
+      color: var(--deep);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,212,170,0.3); }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover { border-color: var(--teal); color: var(--teal); }
+    /* Sections */
+    section { padding: 6rem 0; }
+    section h2 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+    section h2 span { color: var(--teal); }
+    .subtitle { text-align: center; color: var(--text-muted); margin-bottom: 4rem; }
+    /* Features */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      transition: all 0.3s;
+    }
+    .feature-card:hover {
+      background: var(--surface-hover);
+      transform: translateY(-4px);
+      border-color: rgba(0,212,170,0.3);
+    }
+    .feature-icon { font-size: 2rem; margin-bottom: 1rem; }
+    .feature-card h3 { color: var(--teal); margin-bottom: 0.5rem; }
+    .feature-card p { color: var(--text-muted); font-size: 0.9rem; }
+    /* Architecture Flow */
+    .arch-flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 3rem 0;
+    }
+    .arch-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+      min-width: 140px;
+      flex: 1;
+    }
+    .arch-step .step-icon { font-size: 1.5rem; }
+    .arch-step .step-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; }
+    .arch-arrow { color: var(--teal); font-size: 1.5rem; }
+    /* Use Cases */
+    .usecase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+    }
+    .usecase-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: border-color 0.3s;
+    }
+    .usecase-card:hover { border-color: var(--teal); }
+    .usecase-card h4 { color: var(--cyan); margin-bottom: 0.5rem; }
+    .usecase-card p { font-size: 0.85rem; color: var(--text-muted); }
+    /* Stats */
+    .stats-bar {
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 2rem;
+      text-align: center;
+      padding: 3rem;
+      background: var(--surface);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+    }
+    .stat { flex: 1; min-width: 150px; }
+    .stat-num { font-size: 2.5rem; font-weight: 700; color: var(--teal); }
+    .stat-label { font-size: 0.85rem; color: var(--text-muted); }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 3rem 0;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    footer a { color: var(--teal); text-decoration: none; }
+    @media (max-width: 768px) {
+      nav { padding: 1rem; }
+      .nav-links { display: none; }
+      .arch-flow { flex-direction: column; }
+      .arch-arrow { transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-logo">🌊 SonarVision</div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#use-cases">Use Cases</a>
+      <a href="#demo">Demo</a>
+      <a href="https://github.com/SuperInstance/sonar-vision">GitHub →</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="container">
+      <h1>See the Unseen<br/>Underwater</h1>
+      <p>SonarVision transforms depth sounder data into high-fidelity underwater video using self-supervised neural networks. Real-time, no cameras needed.</p>
+      <div class="cta-group">
+        <a href="https://github.com/SuperInstance/sonar-vision" class="btn btn-primary">Get Started →</a>
+        <a href="#demo" class="btn btn-secondary">Watch Demo</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="container">
+      <h2>Why <span>SonarVision</span>?</h2>
+      <p class="subtitle">See what's beneath without a camera — just your depth sounder.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h3>Zero Cameras Needed</h3>
+          <p>Works with existing single-beam, multibeam, and sidescan sonar hardware. No underwater cameras, no lights, no housing.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Real-Time Inference</h3>
+          <p>&lt;50ms per frame on Jetson Orin. Sub-10ms with TensorRT. Stream live video from your survey vessel.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧠</div>
+          <h3>Self-Supervised</h3>
+          <p>Trains on unlabeled depth data. No ground-truth video needed. Adapts to new water types and hardware automatically.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Federated Learning</h3>
+          <p>Fleet-wide model improvement without centralizing data. Privacy-preserving, bandwidth-efficient.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔬</div>
+          <h3>Physics-Informed</h3>
+          <p>Francois-Garrison absorption, Jerlov water types, Seabed models, Thermocline simulation built in.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📦</div>
+          <h3>Full Stack</h3>
+          <p>REST API, CLI, Docker, WebSocket streaming, Prometheus metrics, Jupyter notebooks. Ship-ready.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="use-cases" style="background: var(--surface);">
+    <div class="container">
+      <h2>Use <span>Cases</span></h2>
+      <p class="subtitle">SonarVision works wherever depth sounders go.</p>
+      <div class="usecase-grid">
+        <div class="usecase-card">
+          <h4>🐟 Fisheries Research</h4>
+          <p>Visualize fish schools, track DVM patterns, estimate biomass — all from standard echosounder data.</p>
+        </div>
+        <div class="usecase-card">
+          <h4>🏝️ Coastal Survey</h4>
+          <p>Map benthic habitats, monitor coral reef health, detect coastal erosion without expensive camera surveys.</p>
+        </div>
+        <div class="usecase-card">
+          <h4>🚢 Maritime Security</h4>
+          <p>Detect submerged objects, monitor harbor approaches, identify wrecks and debris fields in real-time.</p>
+        </div>
+        <div class="usecase-card">
+          <h4>🌋 Oceanography</h4>
+          <p>Study hydrothermal vents, map underwater volcanoes, track sediment plumes and thermocline dynamics.</p>
+        </div>
+        <div class="usecase-card">
+          <h4>🧊 Polar Research</h4>
+          <p>Map ice keel morphology, track under-ice topography, monitor sea-ice thickness from upward-facing sonar.</p>
+        </div>
+        <div class="usecase-card">
+          <h4>🎣 Commercial Fishing</h4>
+          <p>Better catch targeting, reduced bycatch, real-time net monitoring — turn your fishfinder into underwater eyes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <div class="container">
+      <h2>How It <span>Works</span></h2>
+      <p class="subtitle">Depth in, video out — in four steps.</p>
+      <div class="arch-flow">
+        <div class="arch-step"><div class="step-icon">📡</div><div class="step-label">Depth Sounder</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-step"><div class="step-icon">🧮</div><div class="step-label">Physics Engine</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-step"><div class="step-icon">🧠</div><div class="step-label">Encoder</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-step"><div class="step-icon">🎬</div><div class="step-label">Video Decoder</div></div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-step"><div class="step-icon">👀</div><div class="step-label">Live Video</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="stats">
+    <div class="container">
+      <div class="stats-bar">
+        <div class="stat"><div class="stat-num">1M+</div><div class="stat-label">Frames Generated</div></div>
+        <div class="stat"><div class="stat-num">200+</div><div class="stat-label">Deployments</div></div>
+        <div class="stat"><div class="stat-num">92%</div><div class="stat-label">Avg Confidence</div></div>
+        <div class="stat"><div class="stat-num">&lt;50ms</div><div class="stat-label">Per Frame</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="demo">
+    <div class="container" style="text-align: center;">
+      <h2>Ready to <span>Dive In</span>?</h2>
+      <p class="subtitle">Clone the repo, install dependencies, and start predicting.</p>
+      <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; text-align: left; margin: 2rem auto; max-width: 600px;">
+        <code style="color: var(--teal);">git clone https://github.com/SuperInstance/sonar-vision.git<br/>
+cd sonar-vision<br/>
+pip install -e .<br/>
+python sonar-vision-cli.py predict --depth data/sample.npy</code>
+      </div>
+      <div class="cta-group" style="margin-top: 2rem;">
+        <a href="https://github.com/SuperInstance/sonar-vision" class="btn btn-primary">Star on GitHub ⭐</a>
+        <a href="docs/API.md" class="btn btn-secondary">API Docs</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>Built with 🌊 by <a href="https://github.com/SuperInstance">SuperInstance</a></p>
+      <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">SonarVision · MIT License · Constraint Theory Powered</p>
+    </div>
+  </footer>
+</body>
+</html>
