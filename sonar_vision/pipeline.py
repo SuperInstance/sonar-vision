@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 from sonar_vision.encoder.sonar_encoder import SonarEncoder
 from sonar_vision.decoder.video_decoder import VideoDecoder, VideoDecoderSequence
+from sonar_vision.aggregator.gct import StreamingGCTAggregator, KVCache
 from sonar_vision.supervision.depth_weighted_loss import (
     DepthWeightedLoss,
     TemporalConsistencyLoss,
@@ -69,8 +70,18 @@ class SonarVision(nn.Module):
         self.water_model = WaterColumnModel()
         self.beam_model = SonarBeamModel(frequency_khz=sonar_frequency_khz)
         
+        # GCT Streaming Aggregator (adapted from LingBot-Map)
+        self.aggregator = StreamingGCTAggregator(
+            embed_dim=embed_dim,
+            num_heads=16,
+            num_layers=6,
+            gqa_ratio=4,
+            window_size=32,
+            max_depth=max_depth,
+            max_bearing=bearing_bins,
+        )
+
         # Feature adapter: encoder tokens → decoder input
-        # (may differ if using external aggregator)
         self.feature_adapter = nn.Sequential(
             nn.LayerNorm(embed_dim),
             nn.Linear(embed_dim, embed_dim),
@@ -110,9 +121,11 @@ class SonarVision(nn.Module):
         # Encode sonar
         tokens, enc_info = self.encoder(sonar_intensity, depth_axis, accumulated)
         
-        # Adapt features (placeholder for GCT aggregator)
-        # In full version, tokens go through the streaming aggregator here
-        adapted_tokens = self.feature_adapter(tokens)
+        # Stream through GCT aggregator
+        # Note: for training (non-streaming), we pass all tokens at once
+        # For streaming inference, use generate_stream() method
+        aggregated, _ = self.aggregator(tokens)
+        adapted_tokens = self.feature_adapter(aggregated)
         
         # Estimate average depth from sonar for color conditioning
         if sonar_detections is not None and sonar_detections.shape[1] > 0:
@@ -166,6 +179,26 @@ class SonarVision(nn.Module):
         self.eval()
         return self.forward(sonar_intensity, accumulated=accumulated)
     
+    def generate_stream(self, sonar_intensity: torch.Tensor, cache: Optional[KVCache] = None):
+        """Generate one frame at a time (streaming inference).
+        
+        Use for real-time sonar processing where sweeps arrive continuously.
+        
+        Args:
+            sonar_intensity: (1, bearing_bins, max_depth) single sonar sweep
+            cache: KV cache from previous call (None for first call)
+        
+        Returns:
+            (frame, depth_map, cache) — cache must be passed to next call
+        """
+        self.eval()
+        with torch.no_grad():
+            tokens, _ = self.encoder(sonar_intensity)
+            aggregated, cache = self.aggregator(tokens, cache=cache)
+            adapted = self.feature_adapter(aggregated)
+            result = self.decoder(adapted)
+            return result["frame"], result["depth_map"], cache
+
     @classmethod
     def from_pretrained(cls, checkpoint_path: str, **kwargs):
         """Load a pretrained SonarVision model."""

@@ -1,304 +1,594 @@
 """
-SonarVision Training Script.
+SonarVision Training Script
 
-Usage:
-    python -m sonar_vision.train --data_dir /data/sonar --output_dir /output --epochs 100
-    python -m sonar_vision.train --data_dir /data/sonar --resume checkpoint.pt
+Complete training loop with:
+- AdamW + cosine LR schedule
+- Gradient accumulation + mixed precision + gradient clipping
+- Checkpointing, TensorBoard logging, EMA
+- Evaluation: PSNR/SSIM vs camera GT, depth MAE
 """
 
 import argparse
-import json
+import math
 import os
-import time
+import random
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.cuda.amp import GradScaler, autocast
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import autocast, GradScaler
+from PIL import Image
+
+from sonar_vision.pipeline import SonarVision
+from sonar_vision.data.sonar_dataset import SonarVideoDataset, create_training_split
 
 
-def build_model(args) -> nn.Module:
-    """Build SonarVision model from args."""
-    from sonar_vision.pipeline import SonarVision
-    return SonarVision(
-        max_depth=args.max_depth,
-        bearing_bins=args.bearing_bins,
-        embed_dim=args.embed_dim,
-        output_resolution=(384, 512),
-        depth_sigma=args.depth_sigma,
-        pretrained_encoder=args.pretrained_encoder or "",
-    )
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+def set_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
-def build_dataloader(args, train: bool = True) -> DataLoader:
-    """Build training or validation dataloader."""
-    from sonar_vision.data.sonar_dataset import SonarVideoDataset
+def get_device(prefer: str = "cuda") -> torch.device:
+    """Pick the best available device."""
+    if prefer == "cuda" and torch.cuda.is_available():
+        return torch.device("cuda")
+    if prefer == "mps" and torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
-    ds = SonarVideoDataset(
-        root_dir=args.data_dir,
-        bearing_bins=args.bearing_bins,
-        max_depth=args.max_depth,
-        depth_sigma=args.depth_sigma,
-        augment=train,
-        train=train,
-    )
-    return DataLoader(
-        ds,
-        batch_size=args.batch_size,
-        shuffle=train,
-        num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=train,
-    )
 
+# ---------------------------------------------------------------------------
+# Custom collate (variable-length cameras / detections)
+# ---------------------------------------------------------------------------
+
+def collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
+    """Collate a list of SonarVideoDataset samples."""
+    B = len(batch)
+
+    # Fixed-size tensors
+    sonar_intensity = torch.stack([b["sonar_intensity"] for b in batch])
+    turbidity = torch.stack([b["turbidity"] for b in batch])
+
+    # Variable-length cameras
+    max_cams = max(b["camera_frames"].shape[0] for b in batch)
+    C, H, W = batch[0]["camera_frames"].shape[1:]
+    camera_frames = torch.zeros(B, max_cams, C, H, W)
+    camera_depths = torch.full((B, max_cams), 1e6, dtype=torch.float32)
+    depth_weights = torch.zeros(B, max_cams, dtype=torch.float32)
+
+    for i, b in enumerate(batch):
+        n = b["camera_frames"].shape[0]
+        camera_frames[i, :n] = b["camera_frames"]
+        camera_depths[i, :n] = b["camera_depths"]
+        depth_weights[i, :n] = b["depth_weights"]
+
+    # Sonar detections — keep only depth column for loss
+    max_dets = max(b["sonar_detections"].shape[0] for b in batch)
+    sonar_detections = torch.zeros(B, max_dets, dtype=torch.float32)
+    for i, b in enumerate(batch):
+        n = b["sonar_detections"].shape[0]
+        if n > 0:
+            sonar_detections[i, :n] = b["sonar_detections"][:, 0]
+
+    return {
+        "sonar_intensity": sonar_intensity,
+        "camera_frames": camera_frames,
+        "camera_depths": camera_depths,
+        "sonar_detections": sonar_detections,
+        "depth_weights": depth_weights,
+        "turbidity": turbidity,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
+
+def compute_psnr(pred: torch.Tensor, target: torch.Tensor) -> float:
+    """PSNR in dB. Both tensors in [0, 1]."""
+    mse = F.mse_loss(pred, target, reduction="mean")
+    if mse.item() < 1e-10:
+        return 100.0
+    return -10.0 * math.log10(mse.item())
+
+
+def compute_ssim(pred: torch.Tensor, target: torch.Tensor, window_size: int = 11) -> float:
+    """Simple box-filter SSIM. Both tensors in [0, 1], shape (N, 3, H, W)."""
+    c1 = 0.01 ** 2
+    c2 = 0.03 ** 2
+
+    mu1 = F.avg_pool2d(pred, window_size, 1, padding=window_size // 2)
+    mu2 = F.avg_pool2d(target, window_size, 1, padding=window_size // 2)
+
+    mu1_sq = mu1 ** 2
+    mu2_sq = mu2 ** 2
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.avg_pool2d(pred ** 2, window_size, 1, padding=window_size // 2) - mu1_sq
+    sigma2_sq = F.avg_pool2d(target ** 2, window_size, 1, padding=window_size // 2) - mu2_sq
+    sigma12 = F.avg_pool2d(pred * target, window_size, 1, padding=window_size // 2) - mu1_mu2
+
+    ssim_map = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / \
+               ((mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2))
+    return ssim_map.mean().item()
+
+
+def compute_depth_mae(
+    pred_depth_map: torch.Tensor,
+    sonar_detections: torch.Tensor,
+    max_depth: int,
+) -> float:
+    """Mean predicted depth vs mean sonar detection depth (meters)."""
+    # pred_depth_map: (B, 1, H, W) in [0, 1]
+    # sonar_detections: (B, D) in meters
+    pred_depth_m = pred_depth_map.mean(dim=[1, 2, 3]) * max_depth  # (B,)
+
+    # valid detections only (ignore padded zeros if no detections)
+    mask = sonar_detections > 0
+    if mask.any():
+        gt_depth_m = sonar_detections.sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+    else:
+        gt_depth_m = torch.zeros_like(pred_depth_m)
+
+    return F.l1_loss(pred_depth_m, gt_depth_m, reduction="mean").item()
+
+
+# ---------------------------------------------------------------------------
+# EMA
+# ---------------------------------------------------------------------------
 
 class EMA:
-    """Exponential moving average of model weights."""
+    """Exponential moving average of model parameters."""
 
     def __init__(self, model: nn.Module, decay: float = 0.999):
         self.decay = decay
-        self.shadow = {}
+        self.shadow: Dict[str, torch.Tensor] = {}
+        self.backup: Dict[str, torch.Tensor] = {}
         for name, param in model.named_parameters():
             if param.requires_grad:
                 self.shadow[name] = param.data.clone()
 
     def update(self, model: nn.Module):
-        for name, param in model.named_parameters():
-            if param.requires_grad and name in self.shadow:
-                self.shadow[name].mul_(self.decay).add_(param.data, alpha=1 - self.decay)
+        with torch.no_grad():
+            for name, param in model.named_parameters():
+                if param.requires_grad:
+                    self.shadow[name].mul_(self.decay).add_(param.data, alpha=1.0 - self.decay)
 
-    def apply(self, model: nn.Module):
+    def apply_shadow(self, model: nn.Module):
         for name, param in model.named_parameters():
-            if param.requires_grad and name in self.shadow:
+            if param.requires_grad:
+                self.backup[name] = param.data.clone()
                 param.data.copy_(self.shadow[name])
 
+    def restore(self, model: nn.Module):
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                param.data.copy_(self.backup[name])
+        self.backup.clear()
 
-def train_one_epoch(
+
+# ---------------------------------------------------------------------------
+# Checkpointing
+# ---------------------------------------------------------------------------
+
+def save_checkpoint(
     model: nn.Module,
-    loader: DataLoader,
     optimizer: torch.optim.Optimizer,
-    scheduler,
+    scheduler: torch.optim.lr_scheduler._LRScheduler,
     scaler: GradScaler,
     ema: EMA,
-    writer: SummaryWriter,
-    args,
-    global_step: int,
-) -> int:
-    """Train for one epoch. Returns updated global_step."""
+    step: int,
+    epoch: int,
+    path: Path,
+):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "scaler": scaler.state_dict(),
+            "ema": ema.shadow,
+            "step": step,
+            "epoch": epoch,
+        },
+        path,
+    )
+
+
+def load_checkpoint(
+    path: str,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler._LRScheduler,
+    scaler: GradScaler,
+    ema: EMA,
+    device: torch.device,
+) -> Tuple[int, int]:
+    ckpt = torch.load(path, map_location=device)
+    model.load_state_dict(ckpt["model"])
+    optimizer.load_state_dict(ckpt["optimizer"])
+    scheduler.load_state_dict(ckpt["scheduler"])
+    scaler.load_state_dict(ckpt["scaler"])
+    ema.shadow = ckpt["ema"]
+    return ckpt["step"], ckpt["epoch"]
+
+
+# ---------------------------------------------------------------------------
+# Data loaders
+# ---------------------------------------------------------------------------
+
+def build_dataloaders(args) -> Tuple[DataLoader, DataLoader]:
+    train_ds, val_ds = create_training_split(
+        root_dir=args.data_dir,
+        train_ratio=0.8,
+        bearing_bins=args.bearing_bins,
+        max_depth=args.max_depth,
+        depth_sigma=3.0,
+        min_cameras=1,
+    )
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=True,
+        collate_fn=collate_fn,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=False,
+        collate_fn=collate_fn,
+    )
+    return train_loader, val_loader
+
+
+# ---------------------------------------------------------------------------
+# Training step
+# ---------------------------------------------------------------------------
+
+def train_one_step(
+    model: SonarVision,
+    batch: Dict[str, torch.Tensor],
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler._LRScheduler,
+    scaler: GradScaler,
+    ema: EMA,
+    device: torch.device,
+    grad_accum_steps: int,
+    step: int,
+    writer: Optional[SummaryWriter],
+    max_depth: int,
+) -> Dict[str, float]:
     model.train()
-    accum_steps = args.gradient_accumulation_steps
-    optimizer.zero_grad()
 
-    for batch_idx, batch in enumerate(loader):
-        sonar = batch["sonar_intensity"].cuda()
-        cam_frames = batch["camera_frames"].cuda()
-        cam_depths = batch["camera_depths"].cuda()
-        det = batch["sonar_detections"].cuda()
-        weights = batch["depth_weights"].cuda()
+    sonar = batch["sonar_intensity"].to(device)
+    cam_frames = batch["camera_frames"].to(device)
+    cam_depths = batch["camera_depths"].to(device)
+    sonar_dets = batch["sonar_detections"].to(device)
 
-        with autocast():
-            output = model(
+    use_amp = device.type == "cuda"
+
+    with autocast(enabled=use_amp):
+        out = model(
+            sonar_intensity=sonar,
+            camera_frames=cam_frames,
+            camera_depths=cam_depths,
+            sonar_detections=sonar_dets,
+        )
+        loss = out["loss"] / grad_accum_steps
+
+    scaler.scale(loss).backward()
+
+    metrics = {}
+    if out.get("loss_dict"):
+        for k, v in out["loss_dict"].items():
+            metrics[k] = v / grad_accum_steps
+
+    # Optimizer step on accumulation boundary
+    if (step + 1) % grad_accum_steps == 0:
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad(set_to_none=True)
+        ema.update(model)
+        scheduler.step()
+
+    return metrics
+
+
+# ---------------------------------------------------------------------------
+# Evaluation
+# ---------------------------------------------------------------------------
+
+@torch.no_grad()
+def evaluate(
+    model: SonarVision,
+    dataloader: DataLoader,
+    device: torch.device,
+    writer: Optional[SummaryWriter],
+    step: int,
+    max_depth: int,
+    log_images: bool = True,
+) -> Dict[str, float]:
+    model.eval()
+    ema.apply_shadow(model)
+
+    psnr_list = []
+    ssim_list = []
+    depth_mae_list = []
+
+    for batch in dataloader:
+        sonar = batch["sonar_intensity"].to(device)
+        cam_frames = batch["camera_frames"].to(device)
+        cam_depths = batch["camera_depths"].to(device)
+        sonar_dets = batch["sonar_detections"].to(device)
+
+        use_amp = device.type == "cuda"
+        with autocast(enabled=use_amp):
+            out = model(
                 sonar_intensity=sonar,
                 camera_frames=cam_frames,
                 camera_depths=cam_depths,
-                sonar_detections=det,
+                sonar_detections=sonar_dets,
             )
 
-            loss = output["loss"] / accum_steps
-            loss_dict = output["loss_dict"]
+        pred = out["frame"]            # (B, 3, H, W) in [-1, 1]
+        depth_map = out["depth_map"]   # (B, 1, H, W) in [0, 1]
+        B = pred.shape[0]
 
-        scaler.scale(loss).backward()
+        # Pick ground-truth camera closest to mean sonar detection depth
+        mean_det = sonar_dets.mean(dim=1)  # (B,)
+        diffs = (cam_depths - mean_det.unsqueeze(1)).abs()  # (B, max_cams)
+        best_idx = diffs.argmin(dim=1)  # (B,)
+        gt = torch.stack([cam_frames[i, best_idx[i]] for i in range(B)])  # (B, 3, H, W)
 
-        if (batch_idx + 1) % accum_steps == 0:
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
-            scheduler.step()
-            ema.update(model)
-            global_step += 1
+        # Normalize to [0, 1]
+        pred_01 = (pred + 1.0) / 2.0
+        gt_01 = gt.clamp(0.0, 1.0)
 
-            # Logging
-            if global_step % 50 == 0:
-                lr = optimizer.param_groups[0]["lr"]
-                writer.add_scalar("train/loss", loss_dict["total"], global_step)
-                writer.add_scalar("train/l1", loss_dict["weighted_l1"], global_step)
-                writer.add_scalar("train/depth", loss_dict["depth_consistency"], global_step)
-                writer.add_scalar("train/cam_weight", loss_dict["mean_cam_weight"], global_step)
-                writer.add_scalar("train/lr", lr, global_step)
-                print(
-                    f"  step {global_step:6d} | loss {loss_dict['total']:.4f} | "
-                    f"l1 {loss_dict['weighted_l1']:.4f} | depth {loss_dict['depth_consistency']:.4f} | "
-                    f"cam_w {loss_dict['mean_cam_weight']:.3f} | lr {lr:.2e}"
-                )
+        psnr_list.append(compute_psnr(pred_01, gt_01))
+        ssim_list.append(compute_ssim(pred_01, gt_01))
+        depth_mae_list.append(compute_depth_mae(depth_map, sonar_dets, max_depth))
 
-            # Checkpoint
-            if global_step % args.checkpoint_every == 0:
-                save_checkpoint(model, ema, optimizer, global_step, args.output_dir)
+        if log_images and writer is not None:
+            n = min(B, 4)
+            writer.add_images("val/pred", pred_01[:n], step)
+            writer.add_images("val/gt", gt_01[:n], step)
+            writer.add_images("val/depth", depth_map[:n], step)
+            log_images = False  # log only first batch
 
-            # Sample images
-            if global_step % 500 == 0:
-                log_sample_images(model, batch, writer, global_step)
+    ema.restore(model)
 
-    return global_step
+    return {
+        "psnr": float(np.mean(psnr_list)),
+        "ssim": float(np.mean(ssim_list)),
+        "depth_mae": float(np.mean(depth_mae_list)),
+    }
 
 
-@torch.no_grad()
-def log_sample_images(model, batch, writer, step):
-    """Log generated vs ground truth images."""
-    model.eval()
-    sonar = batch["sonar_intensity"][:1].cuda()
-    cam_frames = batch["camera_frames"][:1].cuda()
-    cam_depths = batch["camera_depths"][:1]
-    weights = batch["depth_weights"][:1]
+# ---------------------------------------------------------------------------
+# Training loop
+# ---------------------------------------------------------------------------
 
-    with autocast():
-        output = model(sonar_intensity=sonar)
+def train(args):
+    set_seed(42)
+    device = get_device()
+    print(f"[train] Using device: {device}")
 
-    pred = output["frame"][0].cpu()  # (3, H, W)
-    pred = (pred + 1) / 2  # [-1, 1] → [0, 1]
-    pred = pred.clamp(0, 1)
-
-    # Find best camera (highest weight)
-    best_idx = weights.argmax().item()
-    best_cam = cam_frames[0, best_idx].cpu()  # (3, H, W)
-
-    writer.add_image("samples/predicted", pred, step)
-    writer.add_image("samples/best_camera", best_cam, step)
-
-    # Depth map
-    depth_map = output["depth_map"][0, 0].cpu()
-    writer.add_image("samples/depth_map", depth_map, step)
-
-    # Sonar input
-    sonar_img = sonar[0, 0].cpu()
-    writer.add_image("samples/sonar", sonar_img, step)
-
-    model.train()
-
-
-@torch.no_grad()
-def evaluate(model, loader, writer, step):
-    """Run evaluation."""
-    model.eval()
-    total_loss = 0
-    count = 0
-
-    for batch in loader:
-        sonar = batch["sonar_intensity"].cuda()
-        cam_frames = batch["camera_frames"].cuda()
-        cam_depths = batch["camera_depths"].cuda()
-        det = batch["sonar_detections"].cuda()
-
-        with autocast():
-            output = model(
-                sonar_intensity=sonar,
-                camera_frames=cam_frames,
-                camera_depths=cam_depths,
-                sonar_detections=det,
-            )
-
-        if "loss" in output:
-            total_loss += output["loss"].item()
-            count += 1
-
-    avg_loss = total_loss / max(count, 1)
-    writer.add_scalar("val/loss", avg_loss, step)
-    print(f"  val_loss {avg_loss:.4f}")
-    model.train()
-    return avg_loss
-
-
-def save_checkpoint(model, ema, optimizer, step, output_dir):
-    """Save model checkpoint."""
-    os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, f"checkpoint_{step}.pt")
-    torch.save({
-        "step": step,
-        "model": model.state_dict(),
-        "ema": ema.shadow,
-        "optimizer": optimizer.state_dict(),
-    }, path)
-    print(f"  saved {path}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Train SonarVision")
-    parser.add_argument("--data_dir", type=str, required=True)
-    parser.add_argument("--output_dir", type=str, default="./checkpoints")
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", type=float, default=0.01)
-    parser.add_argument("--embed_dim", type=int, default=1024)
-    parser.add_argument("--max_depth", type=int, default=200)
-    parser.add_argument("--bearing_bins", type=int, default=128)
-    parser.add_argument("--depth_sigma", type=float, default=3.0)
-    parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
-    parser.add_argument("--checkpoint_every", type=int, default=1000)
-    parser.add_argument("--pretrained_encoder", type=str, default="")
-    parser.add_argument("--resume", type=str, default="")
-    args = parser.parse_args()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    # Dataloaders
+    train_loader, val_loader = build_dataloaders(args)
+    print(f"[train] Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
     # Model
-    model = build_model(args).to(device)
-    print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
+    model = SonarVision(
+        max_depth=args.max_depth,
+        bearing_bins=args.bearing_bins,
+        embed_dim=args.embed_dim,
+        pretrained_encoder=args.pretrained_encoder,
+    ).to(device)
 
-    # Optimizer
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-    )
-    total_steps = args.epochs * 1000  # approximate
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps)
+    # Optimizer & scheduler
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.05)
+    total_steps = len(train_loader) * args.epochs // args.gradient_accumulation_steps
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=args.lr * 1e-2)
 
-    # Mixed precision
     scaler = GradScaler(enabled=(device.type == "cuda"))
     ema = EMA(model, decay=0.999)
 
-    # Resume
-    global_step = 0
-    if args.resume:
-        ckpt = torch.load(args.resume, map_location=device)
-        model.load_state_dict(ckpt["model"])
-        optimizer.load_state_dict(ckpt["optimizer"])
-        global_step = ckpt.get("step", 0)
-        if "ema" in ckpt:
-            ema.shadow = ckpt["ema"]
-        print(f"Resumed from step {global_step}")
+    start_step = 0
+    start_epoch = 0
 
-    # Data
-    print("Loading training data...")
-    train_loader = build_dataloader(args, train=True)
-    print(f"  {len(train_loader)} batches")
+    if args.resume_checkpoint:
+        print(f"[train] Resuming from {args.resume_checkpoint}")
+        start_step, start_epoch = load_checkpoint(
+            args.resume_checkpoint,
+            model,
+            optimizer,
+            scheduler,
+            scaler,
+            ema,
+            device,
+        )
+        print(f"[train] Resumed at epoch {start_epoch}, step {start_step}")
 
     # TensorBoard
-    writer = SummaryWriter(args.output_dir)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    writer = SummaryWriter(log_dir=output_dir / "logs")
 
-    # Training loop
-    print(f"Training for {args.epochs} epochs...")
-    for epoch in range(args.epochs):
-        t0 = time.time()
-        global_step = train_one_epoch(
-            model, train_loader, optimizer, scheduler, scaler, ema, writer, args, global_step
+    global_step = start_step
+    for epoch in range(start_epoch, args.epochs):
+        model.train()
+        epoch_metrics: Dict[str, float] = {}
+
+        for batch_idx, batch in enumerate(train_loader):
+            metrics = train_one_step(
+                model=model,
+                batch=batch,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                ema=ema,
+                device=device,
+                grad_accum_steps=args.gradient_accumulation_steps,
+                step=global_step,
+                writer=writer,
+                max_depth=args.max_depth,
+            )
+
+            for k, v in metrics.items():
+                epoch_metrics[k] = epoch_metrics.get(k, 0.0) + v
+
+            # Log to TensorBoard on optimizer step boundary
+            if (global_step + 1) % args.gradient_accumulation_steps == 0:
+                global_step += 1
+
+                # Log training metrics
+                if writer is not None:
+                    writer.add_scalar("train/lr", scheduler.get_last_lr()[0], global_step)
+                    for k, v in metrics.items():
+                        writer.add_scalar(f"train/{k}", v * args.gradient_accumulation_steps, global_step)
+
+                # Log sample training images every 500 steps
+                if global_step % 500 == 0 and writer is not None:
+                    with torch.no_grad():
+                        sonar = batch["sonar_intensity"][:4].to(device)
+                        cam_frames = batch["camera_frames"][:4].to(device)
+                        cam_depths = batch["camera_depths"][:4].to(device)
+                        sonar_dets = batch["sonar_detections"][:4].to(device)
+                        model.eval()
+                        out = model(
+                            sonar_intensity=sonar,
+                            camera_frames=cam_frames,
+                            camera_depths=cam_depths,
+                            sonar_detections=sonar_dets,
+                        )
+                        pred_01 = (out["frame"] + 1.0) / 2.0
+                        writer.add_images("train/pred", pred_01, global_step)
+                        writer.add_images("train/depth", out["depth_map"], global_step)
+                        # log first camera as reference
+                        writer.add_images("train/gt", cam_frames[:, 0].clamp(0, 1), global_step)
+                        model.train()
+
+                # Checkpoint every 1000 steps
+                if global_step % 1000 == 0:
+                    ckpt_path = output_dir / f"checkpoint_step_{global_step:07d}.pt"
+                    save_checkpoint(
+                        model,
+                        optimizer,
+                        scheduler,
+                        scaler,
+                        ema,
+                        global_step,
+                        epoch,
+                        ckpt_path,
+                    )
+                    print(f"[train] Saved checkpoint: {ckpt_path}")
+
+                # Evaluation every 500 steps
+                if global_step % 500 == 0:
+                    val_metrics = evaluate(
+                        model,
+                        val_loader,
+                        device,
+                        writer,
+                        global_step,
+                        args.max_depth,
+                        log_images=True,
+                    )
+                    print(
+                        f"[val] step {global_step} | "
+                        f"PSNR {val_metrics['psnr']:.3f} | "
+                        f"SSIM {val_metrics['ssim']:.4f} | "
+                        f"DepthMAE {val_metrics['depth_mae']:.3f}"
+                    )
+                    if writer is not None:
+                        for k, v in val_metrics.items():
+                            writer.add_scalar(f"val/{k}", v, global_step)
+
+        # End-of-epoch summary
+        print(
+            f"[train] Epoch {epoch + 1}/{args.epochs} | "
+            f"step {global_step} | "
+            + " | ".join(f"{k} {v:.4f}" for k, v in epoch_metrics.items())
         )
-        dt = time.time() - t0
-        print(f"Epoch {epoch + 1}/{args.epochs} done in {dt:.1f}s ({global_step} steps)")
 
-    # Save final
-    ema.apply(model)
-    save_checkpoint(model, ema, optimizer, global_step, args.output_dir)
-    print("Done.")
+    # Final checkpoint
+    final_path = output_dir / "checkpoint_final.pt"
+    save_checkpoint(
+        model,
+        optimizer,
+        scheduler,
+        scaler,
+        ema,
+        global_step,
+        args.epochs,
+        final_path,
+    )
+    print(f"[train] Final checkpoint: {final_path}")
+    writer.close()
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train SonarVision")
+
+    # Data
+    parser.add_argument("--data_dir", type=str, required=True, help="Root dataset directory")
+    parser.add_argument("--output_dir", type=str, default="./outputs", help="Output directory")
+
+    # Training
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--batch_size", type=int, default=4, help="Per-device batch size")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Peak learning rate")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4,
+                        help="Gradient accumulation steps")
+
+    # Model
+    parser.add_argument("--embed_dim", type=int, default=1024, help="Token embedding dimension")
+    parser.add_argument("--max_depth", type=int, default=200, help="Max sonar depth (meters)")
+    parser.add_argument("--bearing_bins", type=int, default=128, help="Sonar bearing resolution")
+    parser.add_argument("--pretrained_encoder", type=str, default="",
+                        help="Path to pretrained encoder checkpoint")
+    parser.add_argument("--resume_checkpoint", type=str, default="",
+                        help="Path to checkpoint to resume from")
+
+    # Data loading
+    parser.add_argument("--num_workers", type=int, default=4, help="DataLoader workers")
+
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    train(args)
 
 
 if __name__ == "__main__":
