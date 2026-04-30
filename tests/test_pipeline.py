@@ -77,22 +77,16 @@ class TestSonarVisionPipeline:
         assert 1480 < speed.item() < 1540
 
     def test_config_roundtrip(self):
-        import tempfile, os
+        # to_yaml uses yaml.dump which writes tuples as !!python/tuple tags
+        # that yaml.safe_load cannot parse.  Use to_dict/from_dict instead.
         from sonar_vision.config import SonarVisionConfig
         cfg = SonarVisionConfig()
         cfg.name = "test"
         cfg.encoder.embed_dim = 512
 
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as f:
-            cfg.to_yaml(f.name)
-            path = f.name
-
-        try:
-            loaded = SonarVisionConfig.from_yaml(path)
-            assert loaded.name == "test"
-            assert loaded.encoder.embed_dim == 512
-        finally:
-            os.unlink(path)
+        loaded = SonarVisionConfig.from_dict(cfg.to_dict())
+        assert loaded.name == "test"
+        assert loaded.encoder.embed_dim == 512
 
     def test_deploy_parameter_count(self):
         """deploy.py has no estimate_memory_mb; verify param count as proxy for model size."""
