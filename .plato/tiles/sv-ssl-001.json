@@ -1,0 +1,12 @@
+{
+  "room": "sonar-vision-self-supervision",
+  "domain": "self-supervised-learning",
+  "tile": {
+    "id": "sv-ssl-001",
+    "title": "Depth-Weighted Self-Supervision: Physics-Driven Camera Selection",
+    "content": "SonarVision's self-supervision eliminates manual labeling by exploiting the physical arrangement of cameras at known depths. When sonar detects a target at depth D, the camera nearest to D automatically becomes the ground truth source. The depth-weighted loss: L = Σ_c exp(-|d_cam_c - d_sonar|² / 2σ²) × L1(predicted, camera_c) + λ × MSE(predicted_depth, sonar_depth). σ=3.0m means cameras within ±3m of the detection get >60% weight, cameras >9m away get <1%. This is a form of multi-view consistency loss where view selection is physics-driven rather than learned. Additional losses: TemporalConsistencyLoss (L1 between consecutive predicted frames), TurbidityAwareLoss (weight reduction in high-turbidity conditions). Data augmentation: SonarNoiseAugmentation (Gaussian + speckle + ping dropout), DepthJitter (±0.5m camera position uncertainty), TurbidityAugmentation (random haze), ColorShiftAugmentation (red attenuation + blue boost variation). The result: a system that learns from real sonar-camera pairs without any human annotation.",
+    "tags": ["self-supervised", "multi-view", "depth-weighted", "physics-driven", "underwater", "sonar-camera-fusion", "data-augmentation"],
+    "source": "SuperInstance/sonar-vision",
+    "created": "2026-04-29"
+  }
+}

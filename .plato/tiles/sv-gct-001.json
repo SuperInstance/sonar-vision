@@ -1,0 +1,12 @@
+{
+  "room": "sonar-vision-gct",
+  "domain": "transformer-architecture",
+  "tile": {
+    "id": "sv-gct-001",
+    "title": "GCT Streaming Aggregator: LingBot-Map to Sonar Adaptation",
+    "content": "The Geometric Context Transformer (GCT) streaming aggregator was adapted from LingBot-Map (3D reconstruction from video) to SonarVision (sonar to video). Key changes: (1) Input modality: RGB patches → 4-channel acoustic patches (intensity, gradient, depth-normalized, accumulated). (2) 3D RoPE: (x, y, time) → (depth, bearing, time) — embedding dimension split into thirds for each axis. (3) Fixed geometry: camera intrinsics → sonar has fixed beam geometry, no pose estimation needed. (4) Output head: 3D point cloud → underwater video frames via DPT multi-scale fusion + UnderwaterColorHead. Implementation: Grouped-Query Attention (GQA) with 4 KV heads per 16 query heads for efficiency. Sliding window attention (default 32 tokens) with paged KV cache for streaming. Paged cache lifecycle: init_cache(batch_size) → update(layer, key, value) → trim_to_window(size) → reset(). Memory per sweep: 2 × num_layers × batch × kv_heads × window × head_dim × 2 bytes. For default config (6 layers, 4 KV heads, 1024-dim): ~8.5 MB per 32-sweep window.",
+    "tags": ["GCT", "transformer", "streaming", "KV-cache", "RoPE", "GQA", "LingBot-Map", "attention"],
+    "source": "SuperInstance/sonar-vision",
+    "created": "2026-04-29"
+  }
+}

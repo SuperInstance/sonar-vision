@@ -1,0 +1,12 @@
+{
+  "room": "sonar-vision-architecture",
+  "domain": "underwater-computer-vision",
+  "tile": {
+    "id": "sv-arch-001",
+    "title": "SonarVision: Depth Sounder to Underwater Video via Self-Supervised Multi-Camera Learning",
+    "content": "SonarVision adapts LingBot-Map's Geometric Context Transformer (GCT) from RGB video 3D reconstruction to acoustic sonar modality. The system converts depth sounder returns into predicted underwater video frames using a feed-forward pipeline: SonarEncoder (ViT-adapted for 4-channel acoustic data) → Streaming GCT Aggregator (causal attention, KV cache, 3D RoPE on depth×bearing×time) → VideoDecoder (DPT head with UnderwaterColorHead for blue-green cast). Self-supervision comes from multi-depth camera arrays: when sonar detects a target at depth D, the camera at depth D provides ground truth. Weight function: w = exp(-|d_cam - d_sonar|² / 2σ²). No manual labeling required — the physics of the water column does the work.",
+    "tags": ["sonar", "underwater", "self-supervised", "GCT", "video-generation", "computer-vision", "multi-camera", "depth-estimation"],
+    "source": "SuperInstance/sonar-vision",
+    "created": "2026-04-29"
+  }
+}

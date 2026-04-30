@@ -1,0 +1,12 @@
+{
+  "room": "sonar-vision-physics",
+  "domain": "underwater-physics",
+  "tile": {
+    "id": "sv-phys-001",
+    "title": "Underwater Physics Models for Sonar-Vision Fusion",
+    "content": "Three physics models bridge the gap between acoustic sensing and optical imaging. (1) WaterColumnModel: Mackenzie equation (1981) for sound speed c = 1448.96 + 4.591T - 5.304e-2T² + 2.374e-4T³ + 1.340(S-35) + 1.630e-2D + 1.675e-7D² where T=temperature, S=salinity, D=depth. Sound speed increases with depth (pressure effect dominates thermocline). (2) Beer-Lambert light attenuation: per-channel RGB attenuation where red absorbs first (absorption coefficient ~0.4/m), green moderate (~0.1/m), blue penetrates deepest (~0.05/m). Result: underwater images are blue-green shifted, with red channel near-zero below 20m. (3) SonarBeamModel: range resolution = c/(2*f) where f=sonar frequency. 200kHz sonar → ~3.75mm range resolution. Beam footprint widens with depth: footprint = 2*depth*tan(beam_width/2).",
+    "tags": ["physics", "acoustics", "optics", "Mackenzie", "Beer-Lambert", "sound-speed", "light-attenuation", "sonar"],
+    "source": "SuperInstance/sonar-vision",
+    "created": "2026-04-29"
+  }
+}
