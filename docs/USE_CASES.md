@@ -1,5 +1,7 @@
 # Use Cases — SonarVision in the Real World
 
+> **Landing page:** [superinstance.github.io/sonar-vision-landing](https://superinstance.github.io/sonar-vision-landing/)
+
 ## The Problem
 
 Underwater imagery is **scarce and expensive**. Annotation is nearly impossible at depth. Existing AI systems require thousands of labeled images that don't exist. Meanwhile, every fishing boat has a sonar and could have cameras — producing data 24/7 with no labels needed.
@@ -8,113 +10,143 @@ SonarVision bridges this gap. The sonar IS the label.
 
 ---
 
-## Commercial Fishing
+## Commercial Fishing 🐟
 
 ### Target Species Identification
-**How it works:** Sonar detects a school at depth D. The camera at depth D captures the visual appearance. Over time, the system learns to identify species from sonar signatures alone — "this acoustic pattern means pollock at 80m."
+**Pipeline:** Sonar ping → Pattern match → Species: Pollock → Set gear
 
-**Impact:** Fishermen can identify target species before setting gear. Reduces bycatch. Current systems (Smartrawl by FiS) do this with cameras in the net — SonarVision does it with the sonar you already have.
+Sonar detects a school at depth D. The camera at depth D captures the visual appearance. Over time, the system learns to identify species from sonar signatures alone — "this acoustic pattern means pollock at 80m."
+
+**Impact:** Fishermen identify target species before setting gear. Reduces wasted tows. Current systems (Smartrawl by FiS) cost $30K-$80K and require cameras in the net. SonarVision uses the sonar you already have.
 
 ### Bycatch Reduction
-**How it works:** Real-time prediction from sonar shows what's below before gear enters the water. If the prediction shows non-target species, the captain can move.
+**Pipeline:** Sonar sweep → Species predict → Non-target? → Move vessel
 
-**Market context:** The Nature Conservancy's Edge AI project received funding in 2025-2026 specifically to combat IUU (Illegal, Unreported, Unregulated) fishing through automated monitoring.
+Real-time prediction from sonar shows what's below before gear enters the water. If the prediction shows non-target species, the captain moves on.
+
+**Impact:** The Nature Conservancy's Edge AI project received funding in 2025-2026 specifically to combat IUU fishing through automated monitoring. SonarVision adds the species-level intelligence these systems lack.
 
 ### Catch Forecasting
-**How it works:** Accumulated sonar data builds a 3D picture of what's below. Combined with oceanographic data (temperature, chlorophyll), the system predicts where fish will be.
+**Pipeline:** 24h sonar log → 3D biomass map → + SST/chlorophyll → Forecast
 
-**Market context:** Predictive AI platforms like GreenFish achieve 75-92% accuracy in forecasting productive fishing areas up to 8 days in advance. SonarVision adds the underwater visual layer these systems lack.
+Accumulated sonar data builds a 3D picture of what's below. Combined with oceanographic data (SST, chlorophyll), the system predicts where fish will be tomorrow.
+
+**Impact:** Predictive AI platforms like GreenFish achieve 75-92% accuracy in forecasting productive fishing areas up to 8 days in advance. SonarVision adds the underwater visual layer these surface-only systems lack.
 
 ---
 
-## Aquaculture
+## Aquaculture 🐠
 
-### Fish Counting and Biomass Estimation
-**How it works:** Fixed sonar + camera installation on a pen. Nightly LoRA training adapts to local conditions. Count fish from sonar detections, verify counts with camera predictions.
+> **Market:** AI-powered fish farming projected to reach **$910M by 2026**, growing at **15.4% CAGR**.
 
-**Impact:** Automated counting replaces manual dive surveys. More frequent, more accurate, less stressful for fish.
+### Fish Counting & Biomass Estimation
+**Pipeline:** Fixed sonar → Detections → Camera verify → Count estimate
 
-**Market context:** AI-powered fish farming market projected to reach **$910M by 2026**, growing at **15.4% CAGR**.
+Fixed sonar + camera installation on a pen. Nightly LoRA training adapts to local conditions, species, and pen geometry. Count fish from sonar detections, verify counts with camera predictions.
+
+**Impact:** Replaces $5K+ per manual dive survey. Continuous monitoring instead of quarterly snapshots. More accurate, less stressful for fish. Feed is 50-60% of operating cost — accurate biomass means accurate feed.
 
 ### Health Monitoring
-**How it works:** Predicted video shows fish behavior patterns — schooling density, swimming speed, vertical distribution. Deviations indicate stress or disease.
+**Pipeline:** Behavior baseline → Real-time predict → Anomaly detect → Alert crew
 
-**Impact:** Early disease detection before outbreaks spread. AI models predict disease outbreaks before they happen (SeafoodSource, 2026).
+Predicted video shows fish behavior patterns — schooling density, swimming speed, vertical distribution. Deviations indicate stress or disease.
+
+**Impact:** AI models predict disease outbreaks before visible symptoms (SeafoodSource, 2026). Early detection saves entire pen stocks worth millions. Replaces visual observation that misses subclinical signs.
 
 ### Feeding Optimization
-**How it works:** Sonar shows fish distribution relative to feed pellets. Camera confirms feeding activity. System adjusts feed timing and quantity.
+**Pipeline:** Feed deployed → Sonar: fish at feed? → Camera: feeding? → Adjust rate
 
-**Impact:** AI-driven feeding systems are "a defining innovation of 2026" — precise feed delivery based on real-time fish behavior, reducing waste and improving feed conversion ratios.
+Sonar shows fish distribution relative to feed pellets. Camera confirms feeding activity. System adjusts feed timing and quantity in real time.
+
+**Impact:** AI-driven feeding systems are "a defining innovation of 2026" — precise feed delivery based on real-time fish behavior, reducing waste by 20-30% and improving feed conversion ratios.
 
 ---
 
-## Marine Research
+## Marine Research 🔬
 
 ### Habitat Mapping
-**How it works:** Research vessel with sonar + cameras maps seabed habitat. Sonar provides broad coverage; cameras provide ground truth at sample points. The model extrapolates camera-quality imagery to full sonar coverage.
+**Pipeline:** Sonar survey → Camera stations → Model extrapolate → Full habitat map
 
-**Impact:** Scalable habitat mapping without expensive ROV surveys. Coverage area increases 100x compared to camera-only surveys.
+Research vessel with sonar + cameras maps seabed habitat. Sonar provides broad coverage; cameras provide ground truth at sample points. The model extrapolates camera-quality imagery to full sonar coverage.
+
+**Impact:** Scalable habitat mapping without expensive ROV surveys. Coverage area increases 100x compared to camera-only surveys. ROV surveys cost $10K-50K/day for 1km²/day. SonarVision covers 100km²/day at $2.5K total hardware cost.
 
 ### Species Surveys
-**How it works:** Fixed stations with sonar + camera record species presence. The model learns to identify species from sonar alone, enabling passive acoustic surveys.
+**Pipeline:** Passive sonar → Species classify → Population data → Trend analysis
 
-**Impact:** Population assessments that don't require netting or diver surveys.
+Fixed stations with sonar + camera record species presence. The model learns to identify species from sonar alone, enabling passive acoustic surveys.
+
+**Impact:** Population assessments without netting or diver surveys. Non-invasive, continuous, and cheaper than annual survey cruises. Enables real-time trend analysis instead of annual snapshots.
 
 ### Environmental Monitoring
-**How it works:** Long-term stations track changes in the underwater environment. Predicted video provides visual baseline for comparison.
+**Pipeline:** Baseline capture → Continuous sonar → Predict changes → Trend report
 
-**Impact:** Automated, continuous environmental monitoring. Detect changes in kelp forest health, coral bleaching, invasive species spread.
+Long-term stations track changes in the underwater environment. Predicted video provides visual baseline for before/after comparison across seasons and years.
+
+**Impact:** Automated, continuous environmental monitoring. Detect changes in kelp forest health, coral bleaching, invasive species spread in real time. Replaces expensive periodic surveys.
 
 ---
 
-## Autonomous Underwater Vehicles (AUVs)
+## Autonomous Underwater Vehicles (AUVs) 🤖
 
 ### Obstacle Avoidance
-**How it works:** AUV sonar feeds SonarVision in real-time. Predicted video shows what's ahead. Navigation system uses the prediction for path planning.
+**Pipeline:** Sonar ping → Video predict → Path plan → Avoid obstacle
 
-**Impact:** AUVs can navigate complex underwater terrain without cameras (which fail in turbid water). Sonar works in zero visibility.
+AUV sonar feeds SonarVision in real-time. Predicted video shows what's ahead. Navigation system uses the prediction for path planning.
 
-### SLAM and 3D Reconstruction
-**How it works:** Sonar sweeps + predicted video frames build 3D maps. Depth predictions from the model provide metric scale.
+**Impact:** AUVs navigate complex underwater terrain without cameras (which fail in turbid water). Sonar works in zero visibility. Visual SLAM fails below 5m visibility — SonarVision bridges the gap.
 
-**Impact:** Robust SLAM that works in conditions where visual SLAM fails (dark, turbid, deep water).
+### SLAM & 3D Reconstruction
+**Pipeline:** Sonar sweep → Predict frames → Depth + scale → 3D map
 
-### Search and Inspection
-**How it works:** AUV searches with sonar, predicts what it's seeing, surfaces to confirm. Reduces search time by focusing dives on high-confidence detections.
+Sonar sweeps + predicted video frames build 3D maps. Depth predictions from the model provide metric scale.
 
-**Impact:** Faster underwater search and rescue, infrastructure inspection, archaeological surveys.
+**Impact:** Robust SLAM that works in conditions where visual SLAM fails (dark, turbid, deep water). Enables autonomous inspection of underwater infrastructure (pipelines, wind farms, oil rigs) without tethered ROVs.
+
+### Search & Inspection
+**Pipeline:** Wide sonar scan → Predict content → High confidence? → Dive confirm
+
+AUV searches with sonar, predicts what it's seeing, surfaces to confirm. Reduces search time by focusing dives on high-confidence detections.
+
+**Impact:** Faster underwater search and rescue, infrastructure inspection, archaeological surveys. Sonar covers 100x the area of cameras per unit time.
 
 ---
 
-## Sustainability
+## Sustainability & Compliance 🌍
 
 ### IUU Fishing Detection
-**How it works:** Shore-based stations or patrol vessels use sonar to detect fishing activity. Predicted video identifies vessel type and gear. Cross-referenced with AIS data to flag illegal operations.
+**Pipeline:** Sonar detect → Vessel classify → + AIS check → Flag illegal
 
-**Impact:** Cost-effective monitoring. AI-powered drones and IoT sensors are already being deployed for regulatory compliance (2025-2026).
+Shore-based stations or patrol vessels detect fishing activity via sonar. Predicted video identifies vessel type and gear. Cross-referenced with AIS data to flag illegal operations.
+
+**Impact:** IUU fishing accounts for **20% of global catch ($23B/year)**. AI-powered monitoring is being deployed by The Nature Conservancy (2025-2026). SonarVision adds species-level intelligence that current sonar-only systems lack.
 
 ### Catch Monitoring
-**How it works:** On-board sonar records catch composition. Nightly LoRA training improves species identification accuracy. Reports are generated automatically.
+**Pipeline:** On-board sonar → Species classify → Auto report → Regulatory submit
 
-**Impact:** Transparent catch reporting. Reduces misreporting and underreporting.
+On-board sonar records catch composition automatically. Nightly LoRA training improves species identification accuracy over time. Reports generated without manual input.
+
+**Impact:** Transparent catch reporting. Reduces misreporting and underreporting. Meets electronic monitoring requirements being adopted by NOAA, EU, and Pacific fisheries.
 
 ### Traceability
-**How it works:** Sonar + camera records provide evidence of where, when, and what was caught. Blockchain-anchored predictions provide tamper-proof records.
+**Pipeline:** Catch record → Species verify → Blockchain anchor → Consumer trust
 
-**Impact:** Consumer confidence in sustainable seafood. Premium pricing for verified sustainable catch.
+Sonar + camera records provide evidence of where, when, and what was caught. Federated LoRA models share learning across vessels while preserving privacy.
+
+**Impact:** Consumer confidence in sustainable seafood. Premium pricing for verified sustainable catch (15-30% premium). Meets EU/US import traceability requirements. Blockchain-anchored predictions provide tamper-proof records.
 
 ---
 
 ## How SonarVision Fits
 
-| Application | Input | Output | Training Data |
-|---|---|---|---|
-| Species ID | Sonar pings | Species label | Camera at detection depth |
-| Bycatch reduction | Sonar pings | Species prediction | Multi-camera self-supervision |
-| Fish counting | Sonar pings | Count estimate | Camera verification |
-| AUV navigation | Sonar sweep | Obstacle map | Self-supervised depth |
-| Habitat mapping | Sonar survey | Predicted video | Sample camera stations |
-| IUU detection | Sonar + AIS | Activity flag | Fleet-wide federated model |
+| Application | Input | Output | Training Data | Nightly LoRA | Federated |
+|---|---|---|---|---|---|
+| Species ID | Sonar pings | Species label | Camera at detection depth | ✅ Adapts to local species | ✅ Cross-vessel learning |
+| Bycatch reduction | Sonar pings | Species prediction | Multi-camera self-supervision | ✅ Improves accuracy | ✅ Fleet-wide models |
+| Fish counting | Sonar pings | Count estimate | Camera verification | ✅ Pen-specific adaptation | ✅ Multi-pen knowledge |
+| AUV navigation | Sonar sweep | Obstacle map | Self-supervised depth | ✅ Environment adaptation | ✅ Multi-mission learning |
+| Habitat mapping | Sonar survey | Predicted video | Sample camera stations | ✅ Seasonal adaptation | ✅ Regional models |
+| IUU detection | Sonar + AIS | Activity flag | Fleet-wide federated model | ✅ Pattern refinement | ✅ Fleet intelligence |
 
 **The common thread:** sonar is everywhere on the water. Cameras are cheap. The physics of depth alignment provides the labels. No human annotation ever needed.
 
@@ -122,13 +154,18 @@ SonarVision bridges this gap. The sonar IS the label.
 
 ## Market Context
 
-- **AI in sustainable fisheries market:** $910M by 2026, 15.4% CAGR (Coherent Market Insights)
-- **Entry-level AI fishing systems:** $8,000-$15,000
-- **Premium systems:** $30,000-$80,000
-- **SonarVision target:** $500-$5,000 (uses existing sonar + commodity cameras)
-- **Edge AI hardware (Jetson Orin NX):** ~$500
-- **4 GoPro cameras:** ~$1,600
-- **Total SonarVision system:** ~$2,500 for a complete self-supervised setup
+| Metric | Value | Source |
+|---|---|---|
+| AI aquaculture market | $910M by 2026 | Coherent Market Insights |
+| Annual IUU fishing losses | $23B | FAO / World Bank |
+| Aquaculture CAGR | 15.4% | Coherent Market Insights |
+| Entry-level AI fishing systems | $8,000-$15,000 | Industry reports |
+| Premium AI fishing systems | $30,000-$80,000 | Industry reports |
+| **SonarVision complete system** | **~$2,500** | Uses existing sonar + commodity cameras |
+| Edge AI hardware (Jetson Orin NX) | ~$500 | NVIDIA |
+| 4 GoPro cameras | ~$1,600 | GoPro |
+| Sustainable catch premium | 15-30% | SeafoodSource 2026 |
+| GreenFish forecast accuracy | 75-92% | GreenFish |
 
 ---
 
@@ -142,5 +179,6 @@ SonarVision bridges this gap. The sonar IS the label.
 6. **AI Transforming Fishing into Sustainable Industry** — Logistics Handling, 2025
 7. **5 AI Trends in Seafood 2026** — SeafoodSource
 8. **Edge AI for IUU Fishing Detection** — The Nature Conservancy, 2025
-9. **Prompting Is All You Need** — Cocapn Research
-10. **LingBot-Map: Feed-Forward 3D Foundation Model** — SuperInstance
+9. **Francois-Garrison Absorption Model** — JASA, 1982
+10. **Jerlov Water Classification** — Jerlov, 1976
+11. **Mackenzie Sound Speed Equation** — JASA, 1981
