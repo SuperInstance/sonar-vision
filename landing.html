@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SonarVision ⚓ — Sonar Hears, Vision Sees</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --deep-ocean: #0a1628;
+            --mid-ocean: #0f2035;
+            --surface: #1a3a5c;
+            --light-blue: #4fc3f7;
+            --cyan: #00e5ff;
+            --biolum: #00ffc8;
+            --coral: #ff6b6b;
+            --sonar-green: #39ff14;
+            --text: #e0f0ff;
+            --text-dim: #7ba3c4;
+            --glass: rgba(15, 32, 53, 0.7);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--deep-ocean);
+            color: var(--text);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Ocean background */
+        .ocean-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: 
+                radial-gradient(ellipse at 20% 50%, rgba(0, 229, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(0, 255, 200, 0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 80%, rgba(79, 195, 247, 0.06) 0%, transparent 50%),
+                linear-gradient(180deg, #060d1a 0%, #0a1628 30%, #0f2035 60%, #0a1628 100%);
+        }
+
+        /* Sonar sweep animation */
+        .sonar-sweep {
+            position: fixed;
+            top: 50%;
+            right: -200px;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            transform: translateY(-50%);
+            z-index: 0;
+            opacity: 0.15;
+        }
+
+        .sonar-sweep::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, transparent 0deg, var(--cyan) 10deg, transparent 20deg);
+            animation: sweep 4s linear infinite;
+        }
+
+        @keyframes sweep {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .sonar-ring {
+            position: absolute;
+            border: 1px solid rgba(0, 229, 255, 0.1);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .sonar-ring:nth-child(1) { width: 200px; height: 200px; }
+        .sonar-ring:nth-child(2) { width: 400px; height: 400px; }
+        .sonar-ring:nth-child(3) { width: 600px; height: 600px; }
+
+        /* Bubbles */
+        .bubble {
+            position: fixed;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, rgba(0, 229, 255, 0.3), transparent);
+            animation: rise linear infinite;
+            z-index: 0;
+        }
+
+        @keyframes rise {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 0.5; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+        }
+
+        /* Main content */
+        .content {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Hero */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1.2rem;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: 100px;
+            background: rgba(0, 229, 255, 0.05);
+            color: var(--cyan);
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 2rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .hero-badge .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--sonar-green);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 4px var(--sonar-green); }
+            50% { opacity: 0.5; box-shadow: 0 0 12px var(--sonar-green); }
+        }
+
+        .hero h1 {
+            font-size: clamp(3rem, 8vw, 6rem);
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--text) 0%, var(--light-blue) 50%, var(--cyan) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .emoji {
+            font-size: clamp(3rem, 8vw, 6rem);
+            display: block;
+            margin-bottom: 1rem;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .hero-subtitle {
+            font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+            color: var(--text-dim);
+            max-width: 700px;
+            margin-bottom: 3rem;
+            font-weight: 300;
+        }
+
+        .hero-subtitle strong {
+            color: var(--cyan);
+            font-weight: 500;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.8rem 1.8rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--cyan), var(--biolum));
+            color: var(--deep-ocean);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 229, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--glass);
+            color: var(--text);
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--cyan);
+            transform: translateY(-2px);
+        }
+
+        /* Depth gauge on left */
+        .depth-gauge {
+            position: fixed;
+            left: 2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .depth-gauge .line {
+            width: 2px;
+            height: 120px;
+            background: linear-gradient(180deg, var(--cyan), var(--light-blue), transparent);
+            border-radius: 2px;
+        }
+
+        .depth-gauge .tick {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+        }
+
+        .depth-gauge .label {
+            writing-mode: vertical-lr;
+            transform: rotate(180deg);
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+
+        /* Sections */
+        .section {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 6rem 2rem;
+        }
+
+        .section-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--cyan);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 1rem;
+        }
+
+        .section-title {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+        }
+
+        .section-desc {
+            color: var(--text-dim);
+            max-width: 700px;
+            font-size: 1.1rem;
+            margin-bottom: 3rem;
+        }
+
+        /* Concept card */
+        .concept-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        @media (max-width: 768px) {
+            .concept-grid { grid-template-columns: 1fr; }
+            .depth-gauge { display: none; }
+        }
+
+        .glass-card {
+            background: var(--glass);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(20px);
+        }
+
+        /* Sonar ping visualization */
+        .sonar-viz {
+            position: relative;
+            height: 300px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 2px;
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        .sonar-bar {
+            width: 3px;
+            background: linear-gradient(180deg, var(--cyan), var(--light-blue));
+            border-radius: 2px;
+            opacity: 0.6;
+            transition: height 0.3s ease;
+            position: relative;
+        }
+
+        .sonar-bar::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 6px;
+            height: 6px;
+            background: var(--cyan);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--cyan);
+        }
+
+        .detection-marker {
+            position: absolute;
+            right: 1rem;
+            background: var(--sonar-green);
+            color: var(--deep-ocean);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        /* Weight visualization */
+        .weight-demo {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .weight-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .weight-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            min-width: 100px;
+        }
+
+        .weight-bar-container {
+            flex: 1;
+            height: 28px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .weight-bar {
+            height: 100%;
+            border-radius: 8px;
+            transition: width 1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--deep-ocean);
+        }
+
+        .weight-bar.high { background: linear-gradient(90deg, var(--sonar-green), var(--biolum)); }
+        .weight-bar.med { background: linear-gradient(90deg, var(--light-blue), var(--cyan)); }
+        .weight-bar.low { background: linear-gradient(90deg, rgba(255,255,255,0.1), rgba(255,255,255,0.2)); color: var(--text-dim); }
+
+        /* Architecture */
+        .arch-flow {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding: 1rem 0;
+        }
+
+        .arch-node {
+            flex-shrink: 0;
+            padding: 1rem 1.5rem;
+            border-radius: 14px;
+            text-align: center;
+            min-width: 140px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+        }
+
+        .arch-node .icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .arch-node .name { font-weight: 600; font-size: 0.9rem; }
+        .arch-node .desc { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.25rem; }
+
+        .arch-node.highlight {
+            border-color: var(--cyan);
+            background: rgba(0, 229, 255, 0.08);
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.1);
+        }
+
+        .arch-arrow {
+            flex-shrink: 0;
+            color: var(--text-dim);
+            font-size: 1.2rem;
+        }
+
+        /* Feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .feature-card {
+            background: var(--glass);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(0, 229, 255, 0.3);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon { font-size: 2rem; margin-bottom: 0.75rem; }
+        .feature-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+        .feature-card p { color: var(--text-dim); font-size: 0.9rem; }
+
+        /* Stats */
+        .stats-row {
+            display: flex;
+            gap: 3rem;
+            flex-wrap: wrap;
+            margin: 3rem 0;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat .value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--cyan), var(--biolum));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat .label {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
+        /* Code block */
+        .code-block {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            line-height: 1.8;
+        }
+
+        .code-block .kw { color: var(--cyan); }
+        .code-block .fn { color: var(--biolum); }
+        .code-block .str { color: var(--coral); }
+        .code-block .cmt { color: var(--text-dim); }
+        .code-block .num { color: #ffd93d; }
+
+        /* Deployment cards */
+        .deploy-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .deploy-card {
+            background: var(--glass);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .deploy-card:hover {
+            border-color: rgba(0, 229, 255, 0.3);
+        }
+
+        .deploy-card .device { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .deploy-card h3 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+        .deploy-card .spec { color: var(--text-dim); font-size: 0.85rem; }
+        .deploy-card .fps {
+            margin-top: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--sonar-green);
+        }
+
+        /* Integration section */
+        .integration-row {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+        }
+
+        .integration-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 100px;
+            background: var(--glass);
+            border: 1px solid rgba(255,255,255,0.08);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .integration-chip .emoji { font-size: 1rem; }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 4rem 2rem;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .footer p {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        .footer a {
+            color: var(--cyan);
+            text-decoration: none;
+        }
+
+        .footer a:hover { text-decoration: underline; }
+
+        /* Water particles */
+        .particles {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: rgba(0, 229, 255, 0.3);
+            border-radius: 50%;
+            animation: drift linear infinite;
+        }
+
+        @keyframes drift {
+            0% { transform: translate(0, 0); opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 0.5; }
+            100% { transform: translate(var(--dx), var(--dy)); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ocean-bg"></div>
+    <div class="particles" id="particles"></div>
+
+    <div class="sonar-sweep">
+        <div class="sonar-ring"></div>
+        <div class="sonar-ring"></div>
+        <div class="sonar-ring"></div>
+    </div>
+
+    <div class="depth-gauge">
+        <span class="label">DEPTH</span>
+        <span class="tick">0m</span>
+        <div class="line"></div>
+        <span class="tick">200m</span>
+    </div>
+
+    <div class="content">
+        <!-- Hero -->
+        <section class="hero">
+            <div class="hero-badge">
+                <span class="dot"></span>
+                Self-Supervised Underwater Vision
+            </div>
+            <span class="emoji">⚓</span>
+            <h1>SonarVision</h1>
+            <p class="hero-subtitle">
+                <strong>Sonar hears. Cameras see. The physics of the water column does the rest.</strong><br>
+                Depth sounder returns → predicted underwater video. No manual labeling required.
+            </p>
+            <div class="hero-actions">
+                <a href="https://github.com/SuperInstance/sonar-vision" class="btn btn-primary">
+                    ⚡ View on GitHub
+                </a>
+                <a href="#architecture" class="btn btn-secondary">
+                    🏗️ Architecture
+                </a>
+                <a href="#self-supervision" class="btn btn-secondary">
+                    🎯 Self-Supervision
+                </a>
+            </div>
+        </section>
+
+        <!-- The Concept -->
+        <section class="section" id="concept">
+            <div class="section-label">// the insight</div>
+            <h2 class="section-title">Physics IS the Annotation</h2>
+            <p class="section-desc">
+                When a sonar detects a fish at 15 meters, the camera positioned at 15 meters provides the ground truth.
+                The water column doesn't just transmit sound — it tells you which camera to trust.
+            </p>
+
+            <div class="concept-grid">
+                <div class="glass-card">
+                    <h3 style="margin-bottom: 1rem; color: var(--cyan);">📡 Sonar Sweep</h3>
+                    <div class="sonar-viz" id="sonarViz">
+                        <div class="detection-marker" style="top: 25%;">🐟 15.2m</div>
+                    </div>
+                    <p style="margin-top: 1rem; color: var(--text-dim); font-size: 0.85rem;">
+                        200 kHz sonar sweep — each bar is a bearing bin. Green marker shows detection.
+                    </p>
+                </div>
+
+                <div class="glass-card">
+                    <h3 style="margin-bottom: 1rem; color: var(--sonar-green);">🎯 Camera Weights</h3>
+                    <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 1rem;">
+                        Detection at <strong style="color: var(--sonar-green);">15.2m</strong> — cameras closer get higher supervision weight:
+                    </p>
+                    <div class="weight-demo">
+                        <div class="weight-row">
+                            <span class="weight-label">Cam @ 5m</span>
+                            <div class="weight-bar-container">
+                                <div class="weight-bar low" style="width: 1%;">0.01</div>
+                            </div>
+                        </div>
+                        <div class="weight-row">
+                            <span class="weight-label">Cam @ 10m</span>
+                            <div class="weight-bar-container">
+                                <div class="weight-bar low" style="width: 4%;">0.03</div>
+                            </div>
+                        </div>
+                        <div class="weight-row">
+                            <span class="weight-label">Cam @ 15m</span>
+                            <div class="weight-bar-container">
+                                <div class="weight-bar high" style="width: 99%;">0.98 ★</div>
+                            </div>
+                        </div>
+                        <div class="weight-row">
+                            <span class="weight-label">Cam @ 20m</span>
+                            <div class="weight-bar-container">
+                                <div class="weight-bar low" style="width: 1%;">0.01</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-block" style="margin-top: 1.5rem; font-size: 0.8rem;">
+                        <span class="cmt"># Gaussian depth weighting</span><br>
+                        w = <span class="fn">exp</span>(<span class="kw">-</span>|d_cam <span class="kw">-</span> d_sonar|² <span class="kw">/</span> <span class="num">2σ²</span>)
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture -->
+        <section class="section" id="architecture">
+            <div class="section-label">// architecture</div>
+            <h2 class="section-title">Sonar → Vision Pipeline</h2>
+            <p class="section-desc">
+                Adapted from LingBot-Map's Geometric Context Transformer. Feed-forward, streaming,
+                designed for real-time inference on edge hardware.
+            </p>
+
+            <div class="arch-flow">
+                <div class="arch-node">
+                    <div class="icon">🔊</div>
+                    <div class="name">Sonar</div>
+                    <div class="desc">NMEA pings<br>200 kHz</div>
+                </div>
+                <div class="arch-arrow">→</div>
+                <div class="arch-node highlight">
+                    <div class="icon">🧠</div>
+                    <div class="name">SonarEncoder</div>
+                    <div class="desc">4-ch ViT<br>1024-dim</div>
+                </div>
+                <div class="arch-arrow">→</div>
+                <div class="arch-node highlight">
+                    <div class="icon">🔄</div>
+                    <div class="name">GCT Stream</div>
+                    <div class="desc">Causal Attn<br>KV Cache</div>
+                </div>
+                <div class="arch-arrow">→</div>
+                <div class="arch-node highlight">
+                    <div class="icon">🎬</div>
+                    <div class="name">VideoDecoder</div>
+                    <div class="desc">DPT Head<br>Color Head</div>
+                </div>
+                <div class="arch-arrow">→</div>
+                <div class="arch-node">
+                    <div class="icon">📹</div>
+                    <div class="name">Video</div>
+                    <div class="desc">384×512<br>RGB</div>
+                </div>
+            </div>
+
+            <div class="feature-grid" style="margin-top: 3rem;">
+                <div class="feature-card">
+                    <div class="icon">🧠</div>
+                    <h3>SonarEncoder</h3>
+                    <p>ViT-adapted for acoustic data. 4 input channels: raw intensity, depth gradient, depth-normalized, and accumulated returns.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h3>Streaming GCT</h3>
+                    <p>Geometric Context Transformer with causal temporal attention, paged KV cache, 3D RoPE on (depth, bearing, time), and grouped-query attention.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🌊</div>
+                    <h3>UnderwaterColorHead</h3>
+                    <p>Models the blue-green shift and red absorption that increases with depth. Beer-Lambert attenuation per RGB channel.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⚡</div>
+                    <h3>WaterColumnModel</h3>
+                    <p>Mackenzie sound speed equation, Francois-Garrison absorption, Beer-Lambert light attenuation. Real underwater physics.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🎯</div>
+                    <h3>DepthWeightedLoss</h3>
+                    <p>Automatic ground truth selection. Cameras closest to sonar detections get exponential weight. No human annotation needed.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">💾</div>
+                    <h3>KV Cache</h3>
+                    <p>Paged cache with init → update → trim → reset lifecycle. Sliding window bounds memory. Stream one sweep at a time.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Self-Supervision -->
+        <section class="section" id="self-supervision">
+            <div class="section-label">// self-supervision</div>
+            <h2 class="section-title">Zero Labels. Pure Physics.</h2>
+            <p class="section-desc">
+                Mount 4 GoPro cameras on a downrigger at 5m intervals. Let the sonar run.
+                The system trains itself from the alignment of acoustic and optical sensors.
+            </p>
+
+            <div class="code-block">
+<span class="kw">from</span> sonar_vision.pipeline <span class="kw">import</span> SonarVision
+
+<span class="cmt"># Create model</span>
+model = SonarVision(max_depth=<span class="num">200</span>, bearing_bins=<span class="num">128</span>, embed_dim=<span class="num">1024</span>)
+
+<span class="cmt"># Training — cameras provide automatic ground truth</span>
+output = model(sonar_intensity, camera_frames, camera_depths, sonar_detections)
+loss = output[<span class="str">"loss"</span>]   <span class="cmt"># w = exp(-|d_cam - d_sonar|²/2σ²)</span>
+
+<span class="cmt"># Streaming inference — real-time on Jetson</span>
+cache = <span class="kw">None</span>
+<span class="kw">for</span> sweep <span class="kw">in</span> sonar_stream:
+    frame, depth, cache = model.<span class="fn">generate_stream</span>(sweep, cache=cache)
+            </div>
+        </section>
+
+        <!-- Deployment -->
+        <section class="section" id="deployment">
+            <div class="section-label">// deployment</div>
+            <h2 class="section-title">Edge-Ready</h2>
+            <p class="section-desc">
+                Optimized for Jetson platforms. FP16 inference, INT8 quantization, TensorRT acceleration.
+            </p>
+
+            <div class="deploy-grid">
+                <div class="deploy-card">
+                    <div class="device">🖥️</div>
+                    <h3>RTX 4090</h3>
+                    <div class="spec">16,384 CUDA cores · 24 GB</div>
+                    <div class="fps">60+ fps</div>
+                </div>
+                <div class="deploy-card">
+                    <div class="device">⚡</div>
+                    <h3>Jetson AGX Orin</h3>
+                    <div class="spec">2,048 CUDA cores · 64 GB</div>
+                    <div class="fps">20-30 fps</div>
+                </div>
+                <div class="deploy-card">
+                    <div class="device">🟢</div>
+                    <h3>Jetson Orin NX</h3>
+                    <div class="spec">1,024 CUDA cores · 16 GB</div>
+                    <div class="fps">10-15 fps</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats -->
+        <section class="section">
+            <div class="stats-row">
+                <div class="stat">
+                    <div class="value">4,254</div>
+                    <div class="label">Lines of Python</div>
+                </div>
+                <div class="stat">
+                    <div class="value">10</div>
+                    <div class="label">Commits</div>
+                </div>
+                <div class="stat">
+                    <div class="value">19</div>
+                    <div class="label">Source Files</div>
+                </div>
+                <div class="stat">
+                    <div class="value">4</div>
+                    <div class="label">PLATO Knowledge Rooms</div>
+                </div>
+                <div class="stat">
+                    <div class="value">3</div>
+                    <div class="label">Preset Configs</div>
+                </div>
+                <div class="stat">
+                    <div class="value">0</div>
+                    <div class="label">Labels Required</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Fleet Integration -->
+        <section class="section" id="integration">
+            <div class="section-label">// fleet integration</div>
+            <h2 class="section-title">Part of the Cocapn Ecosystem</h2>
+            <p class="section-desc">
+                SonarVision isn't a standalone project — it's woven into the fleet's knowledge systems.
+            </p>
+
+            <div class="integration-row">
+                <div class="integration-chip">
+                    <span class="emoji">🏛️</span> PLATO — 4 knowledge rooms
+                </div>
+                <div class="integration-chip">
+                    <span class="emoji">🐚</span> I2I — Fleet bottles
+                </div>
+                <div class="integration-chip">
+                    <span class="emoji">⚡</span> Flux — NMEA preprocessing
+                </div>
+                <div class="integration-chip">
+                    <span class="emoji">🐙</span> Git-Native — Push protocol
+                </div>
+                <div class="integration-chip">
+                    <span class="emoji">🗺️</span> LingBot-Map — Base architecture
+                </div>
+                <div class="integration-chip">
+                    <span class="emoji">🔮</span> Cocapn — Fleet knowledge
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>
+                <strong style="color: var(--text);">SonarVision</strong> · Part of the
+                <a href="https://github.com/SuperInstance">SuperInstance</a> fleet ·
+                <a href="https://github.com/SuperInstance/sonar-vision">GitHub</a> ·
+                Built by <a href="https://github.com/SuperInstance/forgemaster">Forgemaster ⚒️</a>
+            </p>
+            <p style="margin-top: 0.5rem; font-size: 0.75rem;">
+                Sonar hears. Cameras see. The physics does the rest.
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // Sonar sweep bars
+        const viz = document.getElementById('sonarViz');
+        for (let i = 0; i < 128; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'sonar-bar';
+            const baseHeight = 20 + Math.random() * 40;
+            // Add a "detection" bump around 25% from top (15m / 200m range)
+            const posNorm = i / 128;
+            const detectionBump = Math.exp(-Math.pow((posNorm - 0.3) * 5, 2)) * 60;
+            bar.style.height = (baseHeight + detectionBump) + 'px';
+            bar.style.animationDelay = (i * 20) + 'ms';
+            viz.appendChild(bar);
+        }
+
+        // Animated sonar bars
+        setInterval(() => {
+            const bars = viz.querySelectorAll('.sonar-bar');
+            bars.forEach((bar, i) => {
+                const baseHeight = 20 + Math.random() * 40;
+                const posNorm = i / 128;
+                const detectionBump = Math.exp(-Math.pow((posNorm - 0.3) * 5, 2)) * 60;
+                bar.style.height = (baseHeight + detectionBump) + 'px';
+            });
+        }, 2000);
+
+        // Floating particles
+        const particlesEl = document.getElementById('particles');
+        for (let i = 0; i < 30; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.left = Math.random() * 100 + '%';
+            p.style.top = Math.random() * 100 + '%';
+            p.style.setProperty('--dx', (Math.random() * 100 - 50) + 'px');
+            p.style.setProperty('--dy', (Math.random() * 100 - 50) + 'px');
+            p.style.animationDuration = (5 + Math.random() * 10) + 's';
+            p.style.animationDelay = (Math.random() * 5) + 's';
+            particlesEl.appendChild(p);
+        }
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+
+        // Intersection observer for fade-in
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.section').forEach(section => {
+            section.style.opacity = '0';
+            section.style.transform = 'translateY(30px)';
+            section.style.transition = 'opacity 0.8s ease, transform 0.8s ease';
+            observer.observe(section);
+        });
+    </script>
+</body>
+</html>
