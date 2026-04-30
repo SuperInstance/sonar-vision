@@ -66,7 +66,7 @@ Sonar → SonarEncoder (4-ch ViT) → GCT Stream (causal attn, KV cache) → Vid
 | `StreamingGCTAggregator` | Causal attention, KV cache, 3D RoPE, grouped-query attention |
 | `VideoDecoder` | DPT head + UnderwaterColorHead (blue-green cast by depth) |
 | `DepthWeightedLoss` | Automatic ground truth from camera array |
-| `WaterColumnModel` | Mackenzie sound speed, Beer-Lambert attenuation |
+| `WaterColumnModel` | Unified model: Mackenzie sound speed, Francois-Garrison absorption, Jerlov light |
 | `NightlyTrainer` | Automated daily LoRA training with quality scoring |
 | `FederatedAggregator` | Opt-in data sharing with differential privacy |
 
@@ -132,7 +132,7 @@ sonar_vision/
 ├── aggregator/           # GCT streaming (KV cache, 3D RoPE)
 ├── decoder/              # DPT head + UnderwaterColorHead
 ├── supervision/          # Self-supervision losses
-├── water/                # Underwater physics
+├── water/                # Underwater physics (Francois-Garrison, Jerlov, Thermocline, Seabed)
 ├── data/                 # Dataset, augmentation, preprocessing
 ├── nightly/              # LoRA training, cron job
 ├── federated/            # Data anonymization, DP, FedAvg
