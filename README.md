@@ -1,150 +1,194 @@
-# SonarVision
+# SonarVision ⚓
 
-> Depth sounder → generative underwater video with self-supervised multi-camera learning.
+> **Depth sounder pings → self-supervised generative underwater video**
 
-Adapts [LingBot-Map](https://github.com/SuperInstance/lingbot-map)'s Geometric Context Transformer to convert depth sounder returns into predicted underwater video. Multiple cameras at different depths provide automatic ground truth supervision — when the sonar shows a fish at 15m, the camera at 15m captures what should be generated. This self-supervision loop eliminates manual labeling.
+Adapts [LingBot-Map](https://github.com/SuperInstance/lingbot-map)'s Geometric Context Transformer (GCT) to convert marine sonar returns into predicted underwater video frames, with automatic self-supervision from multi-depth camera arrays.
+
+## The Idea
+
+When a sonar detects a fish at 15m depth, the camera positioned at 15m provides the ground truth image. No manual labeling required — the physics of the water column does the work.
+
+```
+Sonar: "Fish at 15.2m"
+Camera@5m:  dark water    → w = 0.01 (wrong depth)
+Camera@15m: ★ FISH ★     → w = 0.95 (ground truth!)
+Camera@20m: dark water    → w = 0.01
+
+Loss = Σ exp(-|d_cam - d_sonar|²/σ²) × L2(predicted, camera)
+```
 
 ## Architecture
 
 ```
-                    ┌──────────────────────────────────────────┐
-                    │           SonarVision Pipeline            │
-                    │                                          │
-  Depth Sounder ──► │  ┌─────────────┐   ┌──────────────────┐ │
-  (ping stream)     │  │ Sonar       │   │ Depth-to-Feature │ │
-                    │  │ Encoder     │──►│ Adapter          │ │
-                    │  │ (ViT-B/14)  │   │ (patch embed +   │ │
-                    │               │   │  positional enc) │ │
-                    └─────────────┘   └────────┬─────────┘ │
-                                               │             │
-                                               ▼             │
-                    ┌──────────────────────────────────────┐ │
-                    │    Streaming Aggregator (GCT)        │ │
-                    │    - Temporal causal attention        │ │
-                    │    - KV cache for online inference    │ │
-                    │    - 3D RoPE for depth consistency    │ │
-                    │    - Trajectory memory                │ │
-                    └──────────────┬───────────────────────┘ │
-                                   │                         │
-                    ┌──────────────┼───────────────────────┐ │
-                    │              ▼                        │ │
-                    │    ┌─────────────────┐               │ │
-                    │    │ Video Decoder   │               │ │
-                    │    │ (DPT Head →     │──► Predicted   │ │
-                    │    │  Video Diffusion│    Underwater  │ │
-                    │    │  Decoder)       │    Video Frame  │ │
-                    │    └─────────────────┘               │ │
-                    │              │                        │ │
-                    │              ▼                        │ │
-                    │    ┌─────────────────┐               │ │
-                    │    │ Self-Supervision│               │ │
-                    │    │ Loss Module     │◄── Camera at   │ │
-                    │    │ (depth-weighted │    matched depth│ │
-                    │    │  L1 + perceptual│               │ │
-                    │    │  + depth L2)    │               │ │
-                    │    └─────────────────┘               │ │
-                    └──────────────────────────────────────┘
+Sonar Hardware → NMEAInterpreter → SonarSweepEmbedding → SonarEncoder
+                                                          ↓
+                                                    Streaming GCT
+                                                  (causal attention,
+                                                   KV cache, 3D RoPE)
+                                                          ↓
+                                                   VideoDecoder
+                                              (DPT head + color head)
+                                                          ↓
+                                                     RGB Frame (384×512)
+                                                          ↓
+                                              DepthWeightedLoss ← cameras
 ```
 
-## Key Innovation: Automatic Self-Supervision
+## Key Components
 
-```
-Time T:
-  Sonar: "Fish arch at depth=15.2m, bearing=045°"
-  Camera@5m:  dark water, no fish     → low loss weight (wrong depth)
-  Camera@10m: dark water, no fish     → low loss weight
-  Camera@15m: ★ FISH CAPTURED ★       → HIGH loss weight (ground truth!)
-  Camera@20m: dark water, no fish     → low loss weight
-
-  Loss = Σ_w(d) * L2(predicted(d), camera(d))
-       where w(d) = exp(-|d_camera - d_sonar|² / σ²)
-```
-
-The model automatically learns what a sonar return "looks like" underwater by
-matching predicted video frames against camera footage at the corresponding depth.
-
-## How It Differs from LingBot-Map
-
-| Aspect | LingBot-Map | SonarVision |
-|--------|-------------|-------------|
-| Input | RGB video frames | Sonar pings (depth/bearing/intensity) |
-| Output | 3D point clouds | Underwater video frames |
-| Supervision | Pretrained + sparse depth | Self-supervised (cameras) |
-| Modality | Vision → 3D geometry | Acoustic → visual generation |
-| Real-time | ~20 FPS streaming | Target: 10+ FPS on Jetson |
-| Environment | Indoor/outdoor | Underwater (low light, turbidity) |
-
-## Installation
-
-```bash
-git clone https://github.com/SuperInstance/sonar-vision.git
-cd sonar-vision
-pip install -e ".[dev]"
-```
+| Module | What it does |
+|---|---|
+| `SonarEncoder` | ViT-adapted encoder for acoustic sweeps (4 channels: intensity, gradient, depth-norm, accumulated) |
+| `StreamingGCTAggregator` | LingBot-Map's GCT with causal temporal attention, KV cache, 3D RoPE (depth × bearing × time) |
+| `VideoDecoder` | DPT multi-scale head → underwater video frames with depth-dependent color |
+| `DepthWeightedLoss` | Self-supervision: cameras closest to sonar detections get highest weight |
+| `WaterColumnModel` | Mackenzie sound speed, Beer-Lambert light attenuation, RGB color by depth |
+| `UnderwaterColorHead` | Models the blue-green shift and red absorption with depth |
 
 ## Quick Start
 
 ```python
-from sonar_vision import SonarVision
+from sonar_vision.pipeline import SonarVision
 
-model = SonarVision.from_pretrained("superinstance/sonar-vision-base")
+# Create model
+model = SonarVision(max_depth=200, bearing_bins=128, embed_dim=1024)
 
-# Process a sonar ping stream
-video_frames = model.generate(
-    sonar_pings=sonar_data,     # (N, 4) - depth, bearing, intensity, beam_width
-    camera_calibration=cams,    # Camera positions + intrinsics
-    water_column_params=env,    # Temperature, salinity, turbidity
-)
+# Generate video from sonar
+import torch
+sonar = torch.randn(1, 128, 200)  # (batch, bearing_bins, max_depth)
+output = model.generate(sonar)
+frame = output["frame"]           # (1, 3, 384, 512)
+depth = output["depth_map"]       # (1, 1, 384, 512)
 ```
+
+### Streaming Inference
+
+```python
+cache = None
+for sweep in sonar_stream:
+    frame, depth, cache = model.generate_stream(sweep, cache=cache)
+    # cache carries state across calls — real-time processing
+```
+
+### Training
+
+```bash
+python -m sonar_vision.train \
+    --data_dir /data/sonar \
+    --output_dir ./checkpoints \
+    --epochs 100 \
+    --batch_size 4 \
+    --lr 1e-4 \
+    --gradient_accumulation_steps 4
+```
+
+### Config-Based Training
+
+```python
+from sonar_vision.config import SonarVisionConfig, jetson_nx_config
+
+# Load from YAML
+cfg = SonarVisionConfig.from_yaml("configs/jetson-nx.yaml")
+
+# Or use a preset
+cfg = jetson_nx_config()
+cfg.to_yaml("my_experiment.yaml")
+```
+
+## Preset Configs
+
+| Config | Embed Dim | GCT Layers | Target | Use Case |
+|---|---|---|---|---|
+| `configs/default.yaml` | 1024 | 6 | x86 GPU | Full model, maximum quality |
+| `configs/jetson-nx.yaml` | 768 | 4 | Jetson Orin NX | Optimized for 16GB edge |
+| `configs/debug.yaml` | 256 | 2 | CPU | Fast iteration, testing |
 
 ## Data Format
 
-### Sonar Input
-```python
-# Each ping: (depth_m, bearing_deg, intensity_db, beam_width_deg)
-sonar_pings = np.array([
-    [15.2, 45.0, -30.5, 12.0],  # Fish arch at 15.2m
-    [5.0,  45.0, -60.0, 12.0],  # Bottom at 5m
-    [20.0, 45.0, -45.0, 12.0],  # Another contact at 20m
-])
+```
+data/
+  sonar/
+    2024-06-15T10-30-00.npy     # (128, 200) intensity array
+  cameras/
+    2024-06-15T10-30-00/
+      5m.jpg                      # Camera at 5m depth
+      10m.jpg
+      15m.jpg
+      20m.jpg
+  detections/
+    2024-06-15T10-30-00.json      # {"detections": [{"depth": 15.2, "bearing": 45, "intensity": -30.5}]}
+  water/
+    2024-06-15T10-30-00.json      # {"temperature": 12.0, "salinity": 34.5, "turbidity": 0.3}
 ```
 
-### Camera Input (for training)
+## Deployment (Jetson)
+
 ```python
-cameras = [
-    {"depth_m": 5,  "bearing_deg": 45, "image": cam5_frame},
-    {"depth_m": 10, "bearing_deg": 45, "image": cam10_frame},
-    {"depth_m": 15, "bearing_deg": 45, "image": cam15_frame},
-    {"depth_m": 20, "bearing_deg": 45, "image": cam20_frame},
-]
+from sonar_vision.deploy import JetsonInference
+
+engine = JetsonInference(
+    model_path="checkpoints/best.pt",
+    precision="fp16",
+)
+
+frame, depth, latency = engine.process_sweep(sonar_sweep)
+stats = engine.get_stats()  # {"avg_fps": 12.5, "mean_latency_ms": 80.2}
 ```
-
-## Hardware
-
-- **Development**: Any CUDA GPU (8GB+ VRAM)
-- **Edge deployment**: Jetson Orin NX (16GB) — target for onboard processing
-- **Cameras**: 3-5 underwater cameras at staggered depths (5m intervals)
-- **Sounder**: Any standard fish-finding sonar with NMEA output
 
 ## Project Structure
 
 ```
 sonar_vision/
-├── encoder/          # Sonar ping encoder (ViT adapted for acoustic data)
-├── adapter/          # Depth-to-feature adapter (maps sonar space to ViT space)
-├── aggregator/       # Streaming GCT aggregator (from lingbot-map)
-├── decoder/          # Video decoder (DPT head + temporal diffusion)
-├── supervision/      # Self-supervision loss module
-├── water/            # Underwater physics (sound speed, attenuation, turbidity)
-└── utils/            # NMEA parsing, camera calibration, visualization
+  pipeline.py          # Full SonarVision model (encoder → GCT → decoder)
+  config.py            # YAML-based experiment configuration
+  deploy.py            # TorchScript export, quantization, Jetson inference
+  train.py             # Training loop (AMP, EMA, gradient accumulation)
+  encoder/
+    sonar_encoder.py   # SonarSweepEmbedding + SonarEncoder
+  aggregator/
+    gct.py             # Streaming GCT with KV cache, 3D RoPE, GQA
+  decoder/
+    video_decoder.py   # DPT head + UnderwaterColorHead
+  supervision/
+    depth_weighted_loss.py  # DepthWeightedLoss, TemporalConsistency
+  water/
+    physics.py         # Sound speed, light attenuation, NMEA parsing
+  data/
+    sonar_dataset.py   # SonarVideoDataset + train/val split
+    augmentation.py    # Sonar noise, turbidity, color shift
+    preprocessing.py   # NMEA parsing, detection extraction
+  utils/
+    visualization.py   # Sonar heatmap, detection overlay, comparison
+configs/
+  default.yaml         # Full model config
+  debug.yaml           # Tiny model for testing
+  jetson-nx.yaml       # Jetson Orin NX optimized
 ```
+
+## Hardware Targets
+
+| Target | GPU | VRAM | Expected FPS |
+|---|---|---|---|
+| Jetson Orin NX | 1024 CUDA cores | 16 GB | 10-15 fps |
+| Jetson AGX Orin | 2048 CUDA cores | 64 GB | 20-30 fps |
+| RTX 4090 | 16384 CUDA cores | 24 GB | 60+ fps |
+
+## Adapted from LingBot-Map
+
+| LingBot-Map | SonarVision |
+|---|---|
+| RGB video frames → ViT patch embed | Sonar pings → 4-channel acoustic embed |
+| 3D RoPE (x, y, time) | 3D RoPE (depth, bearing, time) |
+| Camera intrinsics for pose | Fixed sonar geometry |
+| DPT head → 3D point cloud | DPT head → underwater video frames |
+| Pretrained depth supervision | Self-supervised via camera array |
 
 ## License
 
-Apache 2.0 (inherits from LingBot-Map)
+MIT
 
 ## Acknowledgments
 
-- [LingBot-Map](https://github.com/SuperInstance/lingbot-map) — Geometric Context Transformer base architecture
-- [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) — DPT head inspiration
-- [FlashInfer](https://github.com/flashinfer-ai/flashinfer) — Efficient KV cache attention
+- [LingBot-Map](https://github.com/SuperInstance/lingbot-map) — Base GCT architecture
+- [DINOv2](https://github.com/facebookresearch/dinov2) — Transfer learning backbone
+- [DPT](https://github.com/isl-org/DPT) — Dense prediction head design
