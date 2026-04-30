@@ -1,6 +1,13 @@
 """
-SonarVision configuration system.
+SonarVision module.
 
+SonarVision is an end-to-end deep learning framework for underwater sonar perception.
+It ingests raw side-scan sonar ping streams and produces high-resolution bathymetric maps,
+object detections, and semantic segmentations. Designed for edge deployment on Jetson
+platforms as well as high-throughput GPU servers, SonarVision supports training,
+inference, and deployment workflows.
+
+This module implements the SonarVision configuration system.
 Manages experiment configs for training, inference, and deployment.
 Uses YAML for human-readable configuration with schema validation.
 """

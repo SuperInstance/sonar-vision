@@ -492,6 +492,7 @@ class SeabedModel(nn.Module):
         }
 
 
+# Verdict: f1 formula matches Francois & Garrison (1982), f1 = 2.8*(S/35)^0.5*10^{4-1245/(T+273)}.
 class FrancoisGarrisonAbsorption(nn.Module):
     """Full Francois-Garrison (1982) seawater acoustic absorption.
     

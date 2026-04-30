@@ -114,15 +114,18 @@ class VideoDecoder(nn.Module):
         out_channels: List[int] = [256, 512, 1024, 1024],
         output_resolution: Tuple[int, int] = (384, 512),  # (H, W)
         num_temporal_refinement_layers: int = 2,
+        patch_size: int = 14,
     ):
         super().__init__()
         self.embed_dim = embed_dim
         self.output_resolution = output_resolution
+        self.patch_size = patch_size
         
-        # Reassemble projection (tokens → 2D feature map)
-        self.reassemble = nn.Sequential(
+        # Per-patch reassembly: each token → small spatial feature map
+        # Then we arrange patches into a grid
+        self.patch_reassemble = nn.Sequential(
             nn.LayerNorm(embed_dim),
-            nn.Linear(embed_dim, features * 14 * 14),  # Unpatch to 14x14 spatial
+            nn.Linear(embed_dim, features * patch_size * patch_size),
         )
         
         # Multi-scale feature processing (simplified DPT)
@@ -143,6 +146,15 @@ class VideoDecoder(nn.Module):
                 nn.GELU(),
             ))
             in_ch = out_ch
+        
+        # Skip connection adapters: adapt feature_proj outputs to upsample stage channels
+        # features list channels: [256, 512, 1024, 1024]
+        # upsample stage output channels: [256, 256, 256, 64]
+        # We need adapters from feature_proj channels → upsample output channels
+        self.skip_adapters = nn.ModuleList([
+            nn.Conv2d(oc, features if i < 3 else 64, 1)
+            for i, oc in enumerate(out_channels)
+        ])
         
         # Final output: features → RGB
         self.to_rgb = nn.Conv2d(64, 3, 3, padding=1)
@@ -182,10 +194,30 @@ class VideoDecoder(nn.Module):
         """
         B = tokens.shape[0]
         H, W = self.output_resolution
+        ps = self.patch_size
         
-        # Unpatch tokens to 2D feature map
-        x = self.reassemble(tokens)  # (B, features * 14 * 14)
-        x = x.view(B, -1, 14, 14)  # (B, features, 14, 14)
+        # tokens: (B, N, embed_dim) — N = num_patches + scale_token
+        # Drop scale token (index 0), keep only patch tokens
+        patch_tokens = tokens[:, 1:, :]  # (B, N-1, embed_dim)
+        N = patch_tokens.shape[1]
+        
+        # Find a grid arrangement that fits N patches
+        grid_h = int(round(N ** 0.5))
+        grid_w = (N + grid_h - 1) // grid_h
+        
+        # Per-patch reassembly: each token → (features, ps, ps)
+        x = self.patch_reassemble(patch_tokens)  # (B, N, features * ps * ps)
+        x = x.view(B, N, -1, ps, ps)  # (B, N, features, ps, ps)
+        
+        # Arrange patches into grid: (B, features, grid_h*ps, grid_w*ps)
+        # Pad if N doesn't fill the grid exactly
+        if N < grid_h * grid_w:
+            pad = torch.zeros(B, grid_h * grid_w - N, x.shape[2], ps, ps, device=x.device)
+            x = torch.cat([x, pad], dim=1)
+        
+        # Reshape: (B, grid_h*grid_w, features, ps, ps) → (B, features, grid_h*ps, grid_w*ps)
+        x = x.permute(0, 2, 1, 3, 4).contiguous()
+        x = x.view(B, -1, grid_h * ps, grid_w * ps)  # (B, features, grid_h*ps, grid_w*ps)
         
         # Multi-scale feature extraction
         features = [proj(x) for proj in self.feature_proj]
@@ -195,10 +227,12 @@ class VideoDecoder(nn.Module):
         for i, stage in enumerate(self.upsample_stages):
             x = stage(x)
             # Skip connection from corresponding feature level
+            # Skip only for first 3 stages (last stage has different channel count)
             if i < len(features) - 1:
                 fi = len(features) - 2 - i
-                # Resize feature to match current spatial size
                 skip = features[fi]
+                if skip.shape[1] != x.shape[1]:
+                    skip = self.skip_adapters[fi](skip)
                 if skip.shape[-2:] != x.shape[-2:]:
                     skip = F.interpolate(skip, size=x.shape[-2:], mode='bilinear', align_corners=False)
                 x = x + skip
