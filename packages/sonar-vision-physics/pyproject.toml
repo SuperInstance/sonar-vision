@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonar-vision-physics"
+version = "1.0.1"
+description = "Real-time underwater sonar physics engine with WebSocket streaming"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+keywords = ["sonar", "underwater", "physics", "flux", "marine", "acoustics"]
+authors = [
+    {name = "SuperInstance", email = "forgemaster@superinstance.ai"}
+]
+
+[project.urls]
+Homepage = "https://github.com/SuperInstance/sonar-vision"
+Repository = "https://github.com/SuperInstance/sonar-vision"
+Documentation = "https://github.com/SuperInstance/sonar-vision/docs"
+
+[project.scripts]
+sonar-ping = "sonar_vision_physics.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sonar_vision_physics*"]
