@@ -1,0 +1,17 @@
+[package]
+name = "sonar-vision-physics"
+version = "1.0.0"
+edition = "2021"
+description = "Deterministic underwater sonar physics engine — FLUX 9-opcode model"
+authors = ["SuperInstance <forgemaster@superinstance.ai>"]
+license = "MIT"
+repository = "https://github.com/SuperInstance/sonar-vision"
+keywords = ["sonar", "underwater", "physics", "flux", "marine"]
+categories = ["science", "simulation"]
+
+[lib]
+name = "sonar_vision_physics"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
