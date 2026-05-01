@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SonarVision Dashboard Widget</title>
+  <style>
+    :root {
+      --bg: #0a1628;
+      --teal: #00d4aa;
+      --cyan: #0ea5e9;
+      --surface: rgba(255,255,255,0.05);
+      --text: #e2e8f0;
+      --muted: #64748b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 1rem;
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--teal);
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 0.5rem;
+    }
+    .status-dot.active { background: #22c55e; }
+    .status-dot.inactive { background: #ef4444; }
+    #waterfall { width: 100%; height: 200px; border-radius: 8px; background: #000; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .metric {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 0.75rem;
+      text-align: center;
+    }
+    .metric-value { font-size: 1.5rem; font-weight: 700; color: var(--cyan); }
+    .metric-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+    .depth-bar {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 100px;
+      margin-top: 0.5rem;
+    }
+    .depth-bar-segment {
+      flex: 1;
+      background: linear-gradient(to top, var(--teal), var(--cyan));
+      border-radius: 2px 2px 0 0;
+      transition: height 0.3s;
+      min-height: 2px;
+    }
+    .depth-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+    }
+    .log {
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .log-entry { padding: 0.15rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .log-entry .time { color: var(--teal); }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Live Sonar Feed</span>
+      <span><span class="status-dot active" id="statusDot"></span><span id="statusText">Connected</span></span>
+    </div>
+    <canvas id="waterfall"></canvas>
+    <div class="metrics">
+      <div class="metric"><div class="metric-value" id="depthVal">--</div><div class="metric-label">Depth (m)</div></div>
+      <div class="metric"><div class="metric-value" id="tempVal">--</div><div class="metric-label">Temp (C)</div></div>
+      <div class="metric"><div class="metric-value" id="confVal">--</div><div class="metric-label">Confidence</div></div>
+      <div class="metric"><div class="metric-value" id="fpsVal">--</div><div class="metric-label">FPS</div></div>
+      <div class="metric"><div class="metric-value" id="latencyVal">--</div><div class="metric-label">Latency (ms)</div></div>
+    </div>
+    <div class="panel-header" style="margin-top: 1rem;">
+      <span class="panel-title">Depth Profile</span>
+    </div>
+    <div class="depth-bar" id="depthProfile"></div>
+    <div class="depth-label"><span>Surface</span><span>50m</span></div>
+    <div class="panel-header" style="margin-top: 1rem;">
+      <span class="panel-title">Inference Log</span>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <script>
+    const WS_URL = 'ws://' + location.hostname + ':9090';
+    let ws = null;
+    let frameCount = 0;
+    let lastFrameTime = performance.now();
+
+    function connect() {
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => {
+        document.getElementById('statusDot').className = 'status-dot active';
+        document.getElementById('statusText').textContent = 'Connected';
+      };
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'sonar_frame') {
+            frameCount++;
+            const now = performance.now();
+            const fps = 1000 / (now - lastFrameTime);
+            lastFrameTime = now;
+            document.getElementById('fpsVal').textContent = fps.toFixed(1);
+            if (msg.depth) document.getElementById('depthVal').textContent = msg.depth;
+            if (msg.temperature) document.getElementById('tempVal').textContent = msg.temperature;
+            if (msg.confidence) document.getElementById('confVal').textContent = (msg.confidence * 100).toFixed(0) + '%';
+            if (msg.latency_ms) document.getElementById('latencyVal').textContent = msg.latency_ms.toFixed(0);
+            updateDepthProfile(msg.shape || [32]);
+            addLogEntry('Frame ' + frameCount + ' (' + msg.shape + ')');
+          }
+        } catch(err) {}
+      };
+      ws.onclose = () => {
+        document.getElementById('statusDot').className = 'status-dot inactive';
+        document.getElementById('statusText').textContent = 'Disconnected';
+        setTimeout(connect, 2000);
+      };
+    }
+
+    function updateDepthProfile(shape) {
+      const bar = document.getElementById('depthProfile');
+      const n = shape[0] || 32;
+      bar.innerHTML = '';
+      for (let i = 0; i < Math.min(n, 64); i++) {
+        const seg = document.createElement('div');
+        seg.className = 'depth-bar-segment';
+        seg.style.height = (20 + Math.random() * 80) + 'px';
+        bar.appendChild(seg);
+      }
+    }
+
+    function addLogEntry(text) {
+      const log = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = '<span class="time">' + new Date().toLocaleTimeString() + '</span> ' + text;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+      if (log.children.length > 50) log.removeChild(log.firstChild);
+    }
+
+    const canvas = document.getElementById('waterfall');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+
+    function drawWaterfall() {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < canvas.height; y += 2) {
+        for (let x = 0; x < canvas.width; x += 2) {
+          const val = (Math.sin(x * 0.05 + y * 0.1 + Date.now() * 0.001) + 1) * 0.5;
+          ctx.fillStyle = 'hsl(' + (180 - val * 180) + ', 80%, ' + (val * 40 + 10) + '%)';
+          ctx.fillRect(x, y, 2, 2);
+        }
+      }
+      requestAnimationFrame(drawWaterfall);
+    }
+
+    connect();
+    drawWaterfall();
+  </script>
+</body>
+</html>
