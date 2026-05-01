@@ -1,0 +1,13 @@
+# SonarVision Physics — Lightweight Streaming Server
+# Distroless: ~50MB, 0 external deps beyond sonar-vision-physics
+FROM python:3.11-slim AS base
+
+RUN pip install --no-cache-dir sonar-vision-physics==1.0.1
+
+EXPOSE 8081
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD python3 -c "import socket; s=socket.socket(); s.connect(('localhost',8081)); s.close()"
+
+ENTRYPOINT ["sonar-ping", "--serve", "--port", "8081", "--rate", "5.0"]

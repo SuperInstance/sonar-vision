@@ -1,0 +1,23 @@
+services:
+  sonar-vision:
+    build:
+      context: .
+      dockerfile: Dockerfile.streaming
+    image: ghcr.io/superinstance/sonar-vision-streaming:latest
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost',8081)); s.close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  dashboard:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    depends_on:
+      - sonar-vision
