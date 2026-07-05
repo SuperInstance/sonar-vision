@@ -2,10 +2,14 @@
 
 > **📚 Documentation:** [`PLUG_AND_PLAY.md`](./PLUG_AND_PLAY.md) · [`GETTING_STARTED.md`](./GETTING_STARTED.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · [`API_REFERENCE.md`](./API_REFERENCE.md) · [`LOW_LEVEL.md`](./LOW_LEVEL.md)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-%3E%3D3.10-blue?style=flat-square)](https://www.python.org/)
 
-> High-fidelity underwater acoustic simulation and sonar analysis toolkit for Python. Simulate active sonar pings, process echo returns, track moving objects across detections, and build spatial maps from sonar data.
+Sonar Vision is a pure-Python sonar simulation and perception toolkit. It
+generates active sonar pings, simulates two-way acoustic propagation loss,
+processes echo returns, tracks moving objects across detections, and builds
+spatial occupancy maps from sonar data. It is intended for simulation,
+prototyping, and educational use in marine robotics.
 
 ---
 
@@ -15,15 +19,14 @@
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [API Overview](#api-overview)
+- [What It Is Not](#what-it-is-not)
 - [License](#license)
 
 ---
 
 ## Overview
 
-Sonar Vision is a pure-Python library for sonar-based perception in marine robotics and agent-based systems:
-
-- **Sonar ping/echo simulation** — Spreading loss, absorption loss, noise
+- **Sonar ping/echo simulation** — Spreading loss, configurable absorption loss, noise
 - **Signal generation and filtering** — Sine waves, chirps, noise, lowpass/highpass filters
 - **Multi-object tracking** — Constant-velocity prediction with gating-based association
 - **Spatial mapping** — Occupancy grids from sonar returns
@@ -32,8 +35,8 @@ Sonar Vision is a pure-Python library for sonar-based perception in marine robot
 ### Real-World Use Cases
 
 1. **Marine robotics simulation** — Model sensor behavior before deploying hardware
-2. **Multi-agent sonar fusion** — Combine detections from multiple autonomous vessels
-3. **Training data generation** — Generate realistic sonar returns for ML model training
+2. **Training data generation** — Generate realistic sonar returns for ML model training
+3. **Algorithm prototyping** — Test tracking and mapping pipelines in simulation
 
 ---
 
@@ -77,28 +80,42 @@ Active sonar model. Configurable frequency, sound speed, beam width, source leve
 | Method | Description |
 |--------|-------------|
 | `ping(distance)` | Simulate full ping → echo cycle |
+| `ping_return_signal(distance)` | Generate synthetic echo waveform |
 | `generate_ping(sample_rate)` | Generate transmit tone burst |
 | `round_trip_time(distance)` | Compute 2-way travel time |
 | `spreading_loss(distance)` | Geometric spreading loss (dB) |
-| `absorption_loss(distance)` | Thorp model absorption loss (dB) |
+| `absorption_loss(distance)` | Configurable absorption loss (dB) |
 
 ### `Signal`
-Discrete-time signal processing. Constructors: `sine()`, `noise()`, `chirp()`. Filters: `filter_lowpass()`, `filter_highpass()`. Utilities: `fft()`, `energy()`, `envelope()`.
+Discrete-time signal processing. Constructors: `sine()`, `noise()`, `chirp()`. Filters: `lowpass()`, `highpass()`. Utilities: `dft_magnitude()`, `energy()`, `envelope()`.
 
 ### `ObjectTracker`
 Multi-object tracker with constant-velocity motion model. Gating-based association, timeout for lost tracks.
 
 ### `SpatialMap`
-Occupancy grid from sonar returns. Resolution-configurable. `update(x, y, occupied)` and `grid()`.
+Occupancy grid from sonar returns. Resolution-configurable. `add_obstacle()`, `set_cell()`, `get_cell()`, `ray_cast()`.
+
+See [`API_REFERENCE.md`](./API_REFERENCE.md) for the full API.
+
+---
+
+## What It Is Not
+
+- **Not a real-time hydrophone processing stack.** It simulates sonar physics
+  in Python; it does not interface with audio hardware or NMEA devices.
+- **Not a video or camera system.** There is no video prediction, multi-camera
+  learning, or image processing in this codebase.
+- **Not a high-fidelity ocean-acoustics solver.** Propagation models are
+  intentionally simple (geometric spreading + configurable dB/km absorption)
+  for fast simulation and prototyping.
+- **Not a beamforming library.** Single-beam sonar is modelled; phased arrays
+  and multi-beam reconstruction are out of scope.
 
 ---
 
 ## How It Fits
 
-Sonar Vision is part of the [SuperInstance fleet](https://github.com/SuperInstance) ecosystem:
-
-- **[cocapn-marine](https://github.com/SuperInstance/cocapn-marine)** — Marine sensor integration (NMEA 0183, PID autopilot)
-- **[handy-marine-voice](https://github.com/SuperInstance/handy-marine-voice)** — Voice-controlled marine autopilot
+Sonar Vision is part of the [SuperInstance fleet](https://github.com/SuperInstance) ecosystem.
 
 ---
 
@@ -113,24 +130,4 @@ pytest tests/
 
 ## License
 
-MIT © SuperInstance Labs
-
-```
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+MIT © SuperInstance Labs — see [`LICENSE`](./LICENSE).

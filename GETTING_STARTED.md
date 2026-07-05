@@ -53,7 +53,7 @@ for t in tracker.tracks:
 from sonar_vision import Signal
 
 sig = Signal.chirp(f0=1000, f1=10000, duration=0.5)
-lowpassed = sig.filter_lowpass(cutoff=5000)
+lowpassed = sig.lowpass(cutoff=5000)
 print(f"Original: {len(sig.samples)} samples, Filtered: {len(lowpassed.samples)}")
 ```
 

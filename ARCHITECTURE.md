@@ -29,13 +29,13 @@ Ping (emit) ──▶ Propagation (spreading + absorption loss)
 Discrete-time signal with uniform sampling. Construction methods: `sine`, `chirp`, `noise`. Filters: lowpass, highpass. Utility: FFT, energy, envelope.
 
 ### Sonar (`sonar.py`)
-Active sonar model. Configurable: sound speed, frequency, pulse duration, max range, beam width, source level, noise level. Methods: `ping(distance)`, `round_trip_time()`, `spreading_loss()`, `absorption_loss()`, `detect()`.
+Active sonar model. Configurable: sound speed, frequency, pulse duration, max range, beam width, source level, noise level. Methods: `ping(distance)`, `ping_return_signal()`, `round_trip_time()`, `spreading_loss()`, `absorption_loss()`, `total_loss()`, `in_beam()`, `beam_coverage()`.
 
 ### ObjectTracker (`tracker.py`)
 Multi-object tracker with constant-velocity motion model. Gating-based association, timeout for lost tracks. Tracks maintain ID, position, velocity, detection count.
 
 ### SpatialMap (`map.py`)
-Occupancy grid from sonar returns. Resolution-configurable. Methods: `update(x, y, occupied)`, `grid()` for full occupancy map.
+Occupancy grid from sonar returns. Resolution-configurable. Methods: `add_obstacle(obstacle)`, `set_cell(x, y, state)`, `get_cell(x, y)`, `mark_free_ray(...)`, `ray_cast(...)`, `occupancy_count()`, `coverage()`.
 
 ## Data Flow
 

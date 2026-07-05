@@ -9,7 +9,7 @@ A Python library for sonar-based perception. Simulates active sonar pings, proce
 ## Why Should You Care?
 
 - **Realistic sonar simulation** — Ping generation, propagation loss, echo detection
-- **Multi-object tracking** — Constant-velocity Kalman-like prediction with gating
+- **Multi-object tracking** — Constant-velocity prediction with gating
 - **Spatial mapping** — Occupancy grid from sonar returns
 - **Zero hardware needed** — Pure Python, no special drivers
 

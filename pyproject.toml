@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sonar-vision"
 version = "0.1.0"
-description = "Sonar vision — signal processing and spatial awareness for agents"
+description = "Pure-Python sonar ping/echo simulation, signal processing, multi-object tracking, and spatial mapping toolkit"
+license = {text = "MIT"}
 requires-python = ">=3.10"
 
 [project.optional-dependencies]

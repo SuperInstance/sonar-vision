@@ -82,22 +82,28 @@ class Sonar:
         return 20.0 * math.log10(max(distance, 1e-12))
 
     def absorption_loss(self, distance: float, absorption_db_km: float = 10.0) -> float:
-        """Frequency-dependent absorption loss in dB."""
+        """Absorption loss in dB using a constant dB/km coefficient.
+
+        The coefficient is configurable but does not vary with frequency in
+        this simplified model; pass an appropriate value for the transducer
+        frequency and water conditions.
+        """
         return absorption_db_km * distance / 1000.0
 
     def total_loss(self, distance: float, absorption_db_km: float = 10.0) -> float:
-        """Total transmission loss (spreading + absorption) in dB."""
+        """Total one-way transmission loss (spreading + absorption) in dB."""
         return self.spreading_loss(distance) + self.absorption_loss(distance, absorption_db_km)
 
     # ── detect ────────────────────────────────────────────────────
 
-    def ping(self, target_distance: float, target_strength: float = -20.0) -> PingResult:
-        """Simulate a ping at *target_distance* and return detection result.
+    def ping(self, distance: float, target_strength: float = -20.0) -> PingResult:
+        """Simulate a ping at *distance* and return detection result.
 
-        Returns ``PingResult`` with distance estimate (includes small
-        stochastic jitter to simulate measurement noise).
+        Models two-way transmission loss (outgoing plus return path) plus
+        target strength. Returns ``PingResult`` with a distance estimate
+        that includes small stochastic jitter proportional to range.
         """
-        if target_distance <= 0 or target_distance > self.max_range:
+        if distance <= 0 or distance > self.max_range:
             return PingResult(
                 distance=float("nan"),
                 travel_time=float("nan"),
@@ -106,17 +112,18 @@ class Sonar:
                 frequency=self.frequency,
             )
 
-        rtt = self.round_trip_time(target_distance)
-        loss = self.total_loss(target_distance)
-        received_level = self.source_level - loss + target_strength
+        rtt = self.round_trip_time(distance)
+        # Active sonar: sound travels to the target and back, so use two-way loss.
+        two_way_loss = 2.0 * self.total_loss(distance)
+        received_level = self.source_level - two_way_loss + target_strength
         snr = received_level - self.noise_level
         strength = max(0.0, min(1.0, 1.0 / (1.0 + math.exp(-(snr - 6.0) / 3.0))))
 
         # Small measurement jitter proportional to range
         import random
         rng = random.Random()
-        jitter = rng.gauss(0, 0.005 * target_distance)
-        estimated_distance = target_distance + jitter
+        jitter = rng.gauss(0, 0.005 * distance)
+        estimated_distance = distance + jitter
         estimated_rtt = self.round_trip_time(estimated_distance)
 
         return PingResult(
@@ -129,7 +136,7 @@ class Sonar:
 
     def ping_return_signal(
         self,
-        target_distance: float,
+        distance: float,
         target_strength: float = -20.0,
         sample_rate: float = 44100.0,
     ) -> Signal:
@@ -137,14 +144,15 @@ class Sonar:
 
         Returns a ``Signal`` containing transmit pulse, silence, and attenuated echo.
         """
-        if target_distance <= 0 or target_distance > self.max_range:
+        if distance <= 0 or distance > self.max_range:
             return Signal(sample_rate=sample_rate)
 
         tx = self.generate_ping(sample_rate)
-        rtt_samples = int(self.round_trip_time(target_distance) * sample_rate)
+        rtt_samples = int(self.round_trip_time(distance) * sample_rate)
 
-        # Echo is attenuated
-        loss_db = self.total_loss(target_distance) - target_strength
+        # Echo is attenuated by the two-way propagation path; target strength
+        # increases received level, so it reduces the effective loss.
+        loss_db = 2.0 * self.total_loss(distance) - target_strength
         gain = 10.0 ** (-loss_db / 20.0)
         gain = max(0.0, min(1.0, gain))
         echo_samples = [s * gain for s in tx.samples]
