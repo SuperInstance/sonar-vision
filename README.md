@@ -178,6 +178,23 @@ readability. Be aware of the following approximations:
 - **Not a beamforming library.** Single-beam sonar is modelled; phased arrays
   and multi-beam reconstruction are out of scope.
 
+---
+
+## How It Fits
+
+⚠️ **This is the original copy; active maintenance continued elsewhere.**
+Development of sonar-vision moved to
+[purplepincher/sonar-vision](https://github.com/purplepincher/sonar-vision),
+which carries everything in this repository (identical tree at the
+production-grade merge, shared commit history up to it) plus subsequent
+hardening
+(unmasked CI that actually fails on test failures, a documentation
+honesty pass, a `CHANGELOG.md`, and additional test coverage). New work
+lands there; this copy is kept as the SuperInstance sketchbook original
+and may lag behind.
+
+---
+
 ## Testing
 
 ```bash
