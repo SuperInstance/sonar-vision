@@ -20,6 +20,8 @@ It is intended for simulation, algorithm prototyping, and educational use in
 marine robotics — for example, exercising tracking or mapping pipelines before
 deploying real hardware, or generating synthetic sonar returns as training data.
 
+![A sonar sweep glowing in a dark wheelhouse, a green phosphor ping echo arc and a faint target return](docs/hero-sonar-sweep.png)
+
 ---
 
 ## Table of Contents
@@ -49,14 +51,20 @@ sonar perception pipeline:
   Synthesises sine waves, linear chirps, and random noise; filters with
   moving-average low-/high-/band-pass; and measures RMS, energy, envelope, and
   a naïve DFT magnitude spectrum.
+
+  ![Oscilloscope traces of a sine wave and a linear chirp in green phosphor](docs/signal-waveforms.png)
 - **`ObjectTracker`** — associates detections to existing tracks using greedy
   nearest-neighbour matching inside a distance gate, estimates per-track
   velocity with exponential smoothing, and predicts future positions with a
   constant-velocity model. Tracks time out after a configurable period with no
   detection.
+
+  ![A radar plot of moving targets with dotted trails and velocity vectors](docs/object-tracking.png)
 - **`SpatialMap`** — a rectangular occupancy grid (`UNKNOWN` / `FREE` /
   `OCCUPIED`). Supports cell access, obstacle insertion with radius footprints,
   DDA-style ray casting, and marking free space along a sonar sweep.
+
+  ![A top-down occupancy grid of an underwater harbour floor, free space dark and obstacles amber](docs/spatial-map.png)
 - **`SonarDisplay`** — an ASCII renderer. Produces top-down radar sweeps from
   bearing/distance readings, ASCII occupancy maps, and tracker overlays with
   velocity vectors.
