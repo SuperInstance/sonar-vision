@@ -20,7 +20,7 @@ It is intended for simulation, algorithm prototyping, and educational use in
 marine robotics — for example, exercising tracking or mapping pipelines before
 deploying real hardware, or generating synthetic sonar returns as training data.
 
-![A sonar sweep glowing in a dark wheelhouse, a green phosphor ping echo arc and a faint target return](docs/hero-sonar-sweep.png)
+![A sonar sweep glowing in a dark wheelhouse, a green phosphor ping echo arc and a faint target return](docs/hero-sonar-vision-owned.jpg)
 
 ---
 
